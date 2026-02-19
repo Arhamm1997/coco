@@ -1,0 +1,259 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #0A0A0F;
+  --foreground: #F0F0FF;
+  --card: #111118;
+  --card-foreground: #F0F0FF;
+  --popover: #111118;
+  --popover-foreground: #F0F0FF;
+  --primary: #6C63FF;
+  --primary-foreground: #ffffff;
+  --secondary: #1A1A2E;
+  --secondary-foreground: #F0F0FF;
+  --muted: #1A1A2E;
+  --muted-foreground: #8B8BAD;
+  --accent: #00D4FF;
+  --accent-foreground: #F0F0FF;
+  --destructive: #FF4757;
+  --destructive-foreground: #ffffff;
+  --border: #2A2A3E;
+  --input: transparent;
+  --input-background: #111118;
+  --switch-background: #2A2A3E;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #6C63FF;
+  --chart-1: #6C63FF;
+  --chart-2: #00D4FF;
+  --chart-3: #FF6B9D;
+  --chart-4: #00C896;
+  --chart-5: #FFB800;
+  --radius: 0.75rem;
+  --sidebar: #111118;
+  --sidebar-foreground: #F0F0FF;
+  --sidebar-primary: #6C63FF;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1A1A2E;
+  --sidebar-accent-foreground: #F0F0FF;
+  --sidebar-border: #2A2A3E;
+  --sidebar-ring: #6C63FF;
+
+  --seo-bg: #0A0A0F;
+  --seo-surface: #111118;
+  --seo-surface2: #1A1A2E;
+  --seo-border: #2A2A3E;
+  --seo-primary: #6C63FF;
+  --seo-primary-glow: rgba(108, 99, 255, 0.3);
+  --seo-accent: #00D4FF;
+  --seo-accent2: #FF6B9D;
+  --seo-success: #00C896;
+  --seo-warning: #FFB800;
+  --seo-error: #FF4757;
+  --seo-text: #F0F0FF;
+  --seo-text-secondary: #8B8BAD;
+  --seo-text-muted: #4A4A6A;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer base {
+  :where(:not(:has([class*=' text-']), :not(:has([class^='text-'])))) {
+    h1 {
+      font-size: var(--text-2xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h3 {
+      font-size: var(--text-lg);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.5;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.5;
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
+
+/* Custom animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(108, 99, 255, 0.2), 0 0 60px rgba(108, 99, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(108, 99, 255, 0.4), 0 0 80px rgba(108, 99, 255, 0.2);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background-size: 200% auto;
+  animation: shimmer 3s linear infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 2s linear infinite;
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, #6C63FF, #00D4FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-pink {
+  background: linear-gradient(135deg, #6C63FF, #FF6B9D);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glassmorphism card */
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2A2A3E;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3A3A4E;
+}
+
+/* Keyword highlight */
+.keyword-highlight {
+  background: rgba(108, 99, 255, 0.2);
+  border-bottom: 2px solid #6C63FF;
+  padding: 0 2px;
+  border-radius: 2px;
+}

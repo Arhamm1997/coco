@@ -1,8 +1,13 @@
 # Dependencies
 node_modules/
 
+# Dependencies
+node_modules/
+
 # Build output
 .next/
+dist/
+build/
 
 # Environment files
 .env
@@ -13,8 +18,20 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# IDE
+.vscode/
+.idea/
+
+# Archive files
+*.zip
+
+# Misc local artifacts
+nul
+
 # Debug logs
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # TypeScript cache
 *.tsbuildinfo
