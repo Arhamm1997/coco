@@ -1,0 +1,6 @@
+{
+  "/api/check-urls/route": "app/api/check-urls/route.js",
+  "/api/optimize/route": "app/api/optimize/route.js",
+  "/api/health/route": "app/api/health/route.js",
+  "/api/results/route": "app/api/results/route.js"
+}
