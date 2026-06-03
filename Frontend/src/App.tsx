@@ -12,7 +12,15 @@ import { ErrorState } from './components/error-state';
 import { SettingsPage } from './components/settings-page';
 
 import { AIProvider, SEOResult, PROVIDERS } from './lib/types';
-import { callAI, checkUrls } from './lib/api';
+import { callAI, UsageStats, fetchUsageStats } from './lib/api';
+import { useBackendHealth } from './hooks/useBackendHealth';
+
+export interface SessionUsage {
+  provider: AIProvider;
+  model: string;
+  tokensUsed: number;
+  timestamp: number;
+}
 
 const stepVariants = {
   initial: (direction: number) => ({
@@ -32,6 +40,8 @@ const stepVariants = {
 };
 
 export default function App() {
+  const connectionStatus = useBackendHealth();
+
   // Main flow: step 1 = Content & Keyword, step 2 = Results
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -52,6 +62,18 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SEOResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Usage stats
+  const [sessionUsage, setSessionUsage] = useState<SessionUsage[]>([]);
+  const [globalStats, setGlobalStats] = useState<UsageStats | null>(null);
+  const [isRefreshingStats, setIsRefreshingStats] = useState(false);
+
+  const refreshGlobalStats = useCallback(async () => {
+    setIsRefreshingStats(true);
+    const stats = await fetchUsageStats();
+    setGlobalStats(stats);
+    setIsRefreshingStats(false);
+  }, []);
 
   const handleUrlsChange = useCallback((newUrls: string[], name: string) => {
     setUrls(newUrls);
@@ -85,28 +107,8 @@ export default function App() {
     setError(null);
 
     try {
-      // Check URLs in parallel (best effort - may fail due to CORS)
-      let liveUrls = urls;
-      try {
-        const urlStatus = await checkUrls(urls);
-        const live = urls.filter((u) => urlStatus.get(u) !== false);
-        if (live.length > 0) {
-          liveUrls = live;
-        }
-      } catch {
-        // URL checking failed (CORS), use all URLs
-        liveUrls = urls;
-      }
-
-      if (liveUrls.length === 0) {
-        toast.warning('No live URLs found', {
-          description: 'All URLs appear to be unreachable. Using all URLs anyway.',
-        });
-        liveUrls = urls;
-      }
-
-      // Call AI API
-      const result = await callAI(provider, apiKey, content, keyword, liveUrls, model);
+      // Call AI API — the backend handles URL liveness checking internally
+      const result = await callAI(provider, apiKey, content, keyword, urls, model);
 
       // Mark all links as live (since we can't reliably check from browser)
       if (result.internalLinks) {
@@ -120,6 +122,19 @@ export default function App() {
       setDirection(1);
       setStep(2);
       toast.success('SEO content generated successfully!');
+
+      // Track session usage
+      setSessionUsage((prev) => [
+        ...prev,
+        {
+          provider: provider!,
+          model: model || PROVIDERS.find((p) => p.id === provider)?.model || '',
+          tokensUsed: result.tokensUsed ?? 0,
+          timestamp: Date.now(),
+        },
+      ]);
+      // Refresh global stats from backend
+      refreshGlobalStats();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'An unknown error occurred';
       setError(message);
@@ -192,7 +207,7 @@ export default function App() {
       />
 
       {/* Navbar */}
-      <Navbar onSettingsClick={openSettings} />
+      <Navbar onSettingsClick={openSettings} connectionStatus={connectionStatus} />
 
       {/* Main Content */}
       <main className="relative z-10 max-w-4xl mx-auto px-4 py-10">
@@ -217,6 +232,10 @@ export default function App() {
                 onModelChange={setModel}
                 onApiKeyChange={setApiKey}
                 onClose={closeSettings}
+                sessionUsage={sessionUsage}
+                globalStats={globalStats}
+                onRefreshStats={refreshGlobalStats}
+                isRefreshingStats={isRefreshingStats}
               />
             </motion.div>
           ) : loading ? (
