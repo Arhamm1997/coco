@@ -1,5 +1,24 @@
 import { AIProvider, SEOResult } from './types';
 
+export interface ModelUsageStat {
+  model: string;
+  requests: number;
+  totalTokens: number;
+}
+
+export interface ProviderUsageStat {
+  provider: AIProvider;
+  requests: number;
+  totalTokens: number;
+  models: ModelUsageStat[];
+}
+
+export interface UsageStats {
+  providers: ProviderUsageStat[];
+  totalRequests: number;
+  totalTokens: number;
+}
+
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 export async function callAI(
@@ -39,6 +58,7 @@ export async function callAI(
     metaDescription: d.metaDescription,
     internalLinks: d.internalLinks,
     placementRecommendation: d.placementRecommendation,
+    tokensUsed: d.tokensUsed,
   };
 }
 
@@ -60,6 +80,29 @@ export async function checkUrls(urls: string[]): Promise<Map<string, boolean>> {
     map.set(r.url, r.isLive);
   }
   return map;
+}
+
+export async function fetchUsageStats(): Promise<UsageStats | null> {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/usage`);
+    const json = await response.json();
+    if (!response.ok || !json.success) return null;
+    return json.data as UsageStats;
+  } catch {
+    return null;
+  }
+}
+
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const response = await fetch(`${BACKEND_URL}/api/health`, { signal: controller.signal });
+    clearTimeout(timeout);
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 export function formatResultsAsMarkdown(result: SEOResult): string {
