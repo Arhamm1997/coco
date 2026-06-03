@@ -10,7 +10,7 @@ export async function callClaude(
   const client = new Anthropic({ apiKey });
 
   const response = await client.messages.create({
-    model: modelId || 'claude-sonnet-4-5-20250514',
+    model: modelId || 'claude-sonnet-4-6',
     max_tokens: 2048,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
