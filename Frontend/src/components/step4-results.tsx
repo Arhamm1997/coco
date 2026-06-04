@@ -15,7 +15,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SEOResult, AIProvider, PROVIDERS } from '../lib/types';
-import { formatResultsAsMarkdown, formatResultsAsHTML } from '../lib/api';
+import {
+  formatResultsAsMarkdown,
+  formatResultsAsHTML,
+  formatResultsAsFullHTML,
+  copyRichText,
+} from '../lib/api';
 import { SerpPreview } from './serp-preview';
 
 interface Step4Props {
@@ -230,9 +235,8 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
 
   const handleCopyAll = async () => {
     try {
-      const markdown = formatResultsAsMarkdown(results);
-      await navigator.clipboard.writeText(markdown);
-      toast.success('Full output copied to clipboard!');
+      await copyRichText(formatResultsAsFullHTML(results), formatResultsAsMarkdown(results));
+      toast.success('Copied! Headings will be bold in Google Docs / Word.');
     } catch {
       toast.error('Failed to copy');
     }
@@ -240,15 +244,23 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
 
   const handleCopyHTML = async () => {
     try {
-      const html = formatResultsAsHTML(results);
-      await navigator.clipboard.writeText(html);
-      toast.success('Copied as HTML!');
+      await copyRichText(formatResultsAsHTML(results), formatResultsAsMarkdown(results));
+      toast.success('Copied as rich text!');
     } catch {
       toast.error('Failed to copy');
     }
   };
 
   const contentBlockText = `## ${results.h2}\n\n${results.paragraph1}\n\n### ${results.h3}\n\n${results.paragraph2}`;
+
+  const handleCopyContentBlock = async () => {
+    try {
+      await copyRichText(formatResultsAsHTML(results), contentBlockText);
+      toast.success('Copied! Headings will be bold in Google Docs / Word.');
+    } catch {
+      toast.error('Failed to copy');
+    }
+  };
 
   return (
     <motion.div variants={containerVariants} initial="initial" animate="animate">
@@ -348,7 +360,20 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
               Ready
             </span>
           </div>
-          <CopyButton text={contentBlockText} label="Copy All" />
+          <motion.button
+            onClick={handleCopyContentBlock}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-all cursor-pointer"
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              color: '#8B8BAD',
+            }}
+            whileHover={{ background: 'rgba(255, 255, 255, 0.06)' }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <Copy className="w-3 h-3" />
+            Copy All
+          </motion.button>
         </div>
 
         {/* Article preview — clean, rendered typography */}

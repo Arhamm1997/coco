@@ -143,6 +143,54 @@ ${linkLines}
 **PLACEMENT RECOMMENDATION:** ${result.placementRecommendation}`;
 }
 
+/** Content block only — H2, P1, H3, P2 as rich HTML */
 export function formatResultsAsHTML(result: SEOResult): string {
-  return `<h2>${result.h2}</h2>\n\n<p>${result.paragraph1}</p>\n\n<h3>${result.h3}</h3>\n\n<p>${result.paragraph2}</p>`;
+  return [
+    `<h2>${result.h2}</h2>`,
+    `<p>${result.paragraph1}</p>`,
+    `<h3>${result.h3}</h3>`,
+    `<p>${result.paragraph2}</p>`,
+  ].join('\n\n');
+}
+
+/** Full output as rich HTML — headings bold, labels bold, links clickable */
+export function formatResultsAsFullHTML(result: SEOResult): string {
+  const linkItems = result.internalLinks
+    .map(
+      (link, i) =>
+        `<p>${i + 1}. <strong>Anchor text:</strong> &ldquo;${link.anchorText}&rdquo;<br>` +
+        `<strong>Link to:</strong> <a href="${link.url}">${link.url}</a></p>`
+    )
+    .join('\n');
+
+  return [
+    `<h2>${result.h2}</h2>`,
+    `<p>${result.paragraph1}</p>`,
+    `<h3>${result.h3}</h3>`,
+    `<p>${result.paragraph2}</p>`,
+    `<p><strong>Meta Title:</strong> ${result.metaTitle}</p>`,
+    `<p><strong>Meta Description:</strong> ${result.metaDescription}</p>`,
+    `<p><strong>Internal Links with Anchor Texts:</strong></p>`,
+    linkItems,
+    `<p><strong>PLACEMENT RECOMMENDATION:</strong> ${result.placementRecommendation}</p>`,
+  ].join('\n\n');
+}
+
+/**
+ * Write both HTML and plain-text to the clipboard simultaneously.
+ * Apps that support rich paste (Google Docs, Word, Notion) will use the HTML.
+ * Plain-text editors fall back to the markdown string.
+ */
+export async function copyRichText(html: string, plain: string): Promise<void> {
+  if (typeof ClipboardItem !== 'undefined') {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html':  new Blob([html],  { type: 'text/html'  }),
+        'text/plain': new Blob([plain], { type: 'text/plain' }),
+      }),
+    ]);
+  } else {
+    // Safari / older browsers — plain text only
+    await navigator.clipboard.writeText(plain);
+  }
 }
