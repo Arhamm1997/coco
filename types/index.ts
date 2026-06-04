@@ -120,3 +120,28 @@ export interface ResultsResponse {
   };
   error?: string;
 }
+
+// ── Usage stats types ─────────────────────────────────────────────────────
+
+export interface ModelUsageStat {
+  model: string;
+  requests: number;
+  totalTokens: number;
+}
+
+export interface ProviderUsageStat {
+  provider: AIProvider;
+  requests: number;
+  totalTokens: number;
+  models: ModelUsageStat[];
+}
+
+export interface UsageStatsResponse {
+  success: boolean;
+  data?: {
+    providers: ProviderUsageStat[];
+    totalRequests: number;
+    totalTokens: number;
+  };
+  error?: string;
+}
