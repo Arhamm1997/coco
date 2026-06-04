@@ -34,11 +34,14 @@ function parseLinks(raw: string, originalContent: string): InternalLink[] {
     const parts = line.split('|').map((p) => p.trim());
     if (parts.length < 2) continue;
 
-    // Strip leading list markers (1., 2., -, •) then strip surrounding quotes
+    // Strip leading list markers (1., 2., -, •), bold markdown (**), then quotes
     const anchor = stripQuotes(
-      parts[0].replace(/^\d+\.\s*/, '').replace(/^[-•*]\s*/, '')
+      parts[0]
+        .replace(/^\d+\.\s*/, '')
+        .replace(/^[-•*]\s*/, '')
+        .replace(/\*\*/g, '')
     );
-    const url = stripQuotes(parts[1]);
+    const url = stripQuotes(parts[1]).replace(/[<>]/g, '').trim(); // also strip angle brackets
 
     // Must have content and a valid URL
     if (!anchor || !url || !url.startsWith('http')) continue;

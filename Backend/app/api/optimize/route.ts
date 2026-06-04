@@ -116,17 +116,24 @@ export async function POST(req: NextRequest) {
     // ── 7. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
-    // ── 8. Validate links: anchor must exist verbatim in content ──────────────
-    // Strip any residual surrounding quotes before checking, in case the parser
-    // missed edge cases (e.g. nested quotes or unusual Unicode variants).
+    // ── 8. Validate links ──────────────────────────────────────────────────────
+    // The SEO section (paragraph1 + paragraph2) will be INSERTED into the article,
+    // so anchor text from either the original article OR the generated paragraphs is valid.
+    // Also strip residual quotes/bold markers that Claude sometimes adds.
+    const searchableContent = [
+      content,
+      parsed.paragraph1,
+      parsed.paragraph2,
+    ].join('\n').toLowerCase();
+
     const validatedLinks = parsed.internalLinks.filter((link) => {
       const cleanAnchor = link.anchorText
-        .replace(/^[""''«»"'`]+/, '')
-        .replace(/[""''«»"'`]+$/, '')
+        .replace(/\*\*/g, '')               // strip bold markdown **
+        .replace(/^[""''«»"'`]+/, '')       // strip leading quotes
+        .replace(/[""''«»"'`]+$/, '')       // strip trailing quotes
         .trim();
-      // Update the stored anchor text to the cleaned version
       link.anchorText = cleanAnchor;
-      return content.toLowerCase().includes(cleanAnchor.toLowerCase());
+      return cleanAnchor.length >= 2 && searchableContent.includes(cleanAnchor.toLowerCase());
     });
 
     const durationMs = Date.now() - startTime;

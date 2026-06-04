@@ -18,6 +18,8 @@ export function buildPrompt({ content, primaryKeyword, liveURLs }: BuildPromptAr
   const urlDatabase = liveURLs.map((u) => ({
     address: u.url,
     title: slugToTitle(u.url),
+    // suggested_anchor is pre-verified: it exists verbatim in the article content
+    ...(u.anchorText ? { suggested_anchor: u.anchorText } : {}),
   }));
 
   return `PRIMARY KEYWORD: ${primaryKeyword}
@@ -76,16 +78,21 @@ INTERNAL LINK RULES — all mandatory
 ════════════════════════════════════════
 1. URL must be an EXACT string match from the "address" field of the URL database. Never fabricate.
 
-2. Anchor text — VERBATIM COPY rule (this is the most important rule):
-   a. Find a phrase that already exists word-for-word in the article content.
-   b. Copy it EXACTLY — same spelling, same word order, no additions or removals.
-   c. Do NOT surround it with quotes in the output (write: aesthetic suppliers, NOT "aesthetic suppliers").
-   d. Test before writing: mentally highlight the exact phrase in the article. If you cannot highlight it, choose different anchor text.
-   e. Paraphrases, synonyms, and near-matches will FAIL validation. Only exact copies pass.
+2. Anchor text — VERBATIM COPY rule (most important):
+   a. PREFERRED: Use the "suggested_anchor" field from the URL DATABASE if it is provided.
+      It is already verified to exist word-for-word in the article content. Use it exactly as given.
+   b. ALTERNATIVE: If no suggested_anchor, pick a 2–4 word phrase that exists verbatim in either:
+      — the ORIGINAL ARTICLE CONTENT (above), OR
+      — the paragraphs you are generating right now (paragraph1 / paragraph2)
+   c. Copy the phrase EXACTLY — same spelling, same word order, same hyphenation.
+   d. Do NOT surround it with quotes in the output (write: aesthetic suppliers, NOT "aesthetic suppliers").
+   e. Do NOT use bold: write: clinic operations, NOT **clinic operations**
+   f. Paraphrases, synonyms, and additions FAIL validation.
 
-   WRONG: Article says "aesthetic suppliers" → you write "reliable aesthetic suppliers" ← adds a word, FAILS
-   WRONG: Article says "next-day dispatch" → you write "next day dispatch" ← missing hyphen, FAILS
-   RIGHT: Article says "aesthetic suppliers" → you write: aesthetic suppliers ← exact copy, no quotes, PASSES
+   WRONG: Article says "aesthetic suppliers" → you write "reliable aesthetic suppliers" ← FAILS (extra word)
+   WRONG: Article says "next-day dispatch" → you write "next day dispatch" ← FAILS (missing hyphen)
+   RIGHT: suggested_anchor says "aesthetic suppliers" → you write: aesthetic suppliers ← PASSES
+   RIGHT: Your paragraph1 says "clinic operations easier" → you write: clinic operations ← PASSES
 
 3. Anchor text must be 2–4 words only.
 
