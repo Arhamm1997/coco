@@ -94,7 +94,7 @@ export function SettingsPage({
           return;
         }
 
-        const headers = (jsonData[0] as unknown[]).map((h) => String(h || '').toLowerCase());
+        const headers = (jsonData[0] as unknown as unknown[]).map((h) => String(h || '').toLowerCase());
         let colIndex = headers.indexOf('address');
         if (colIndex === -1) {
           colIndex = 0;
@@ -102,7 +102,7 @@ export function SettingsPage({
 
         const extractedUrls: string[] = [];
         for (let i = 1; i < jsonData.length; i++) {
-          const row = jsonData[i] as unknown[];
+          const row = jsonData[i] as unknown as unknown[];
           if (row && row[colIndex]) {
             const val = String(row[colIndex]).trim();
             if (val && (val.startsWith('http://') || val.startsWith('https://'))) {
