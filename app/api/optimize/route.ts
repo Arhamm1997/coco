@@ -24,8 +24,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { content, primaryKeyword, urls, provider, apiKey, model } =
-      body as OptimizeRequest;
+    const { content, primaryKeyword, urls, provider, model } = body as OptimizeRequest;
+    const rawApiKey = (body as OptimizeRequest).apiKey;
+
+    // ── 1b. Resolve API key — use request key, else fall back to server env var ──
+    const ENV_KEY_MAP: Record<string, string> = {
+      claude:  'ANTHROPIC_API_KEY',
+      openai:  'OPENAI_API_KEY',
+      gemini:  'GEMINI_API_KEY',
+      grok:    'GROK_API_KEY',
+    };
+    const apiKey = rawApiKey?.trim() || process.env[ENV_KEY_MAP[provider] ?? ''] || '';
+
+    if (!apiKey) {
+      return NextResponse.json(
+        { success: false, error: `No API key provided and no ${ENV_KEY_MAP[provider]} environment variable is set on the server.` } satisfies OptimizeResponse,
+        { status: 400 }
+      );
+    }
 
     // ── 2. Search the COMPLETE uploaded URL sheet for top candidates ────────
     // Strict search: requires pre-confirmed anchor text in content + relevance
