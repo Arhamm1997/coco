@@ -15,19 +15,36 @@ function extractXMLTag(text: string, tag: string): string {
   return match ? match[1].trim() : '';
 }
 
+// Strip surrounding quotes (curly or straight) that AI sometimes wraps around text
+function stripQuotes(s: string): string {
+  return s
+    .replace(/^[“”‘’«»"'`]+/, '')
+    .replace(/[“”‘’«»"'`]+$/, '')
+    .trim();
+}
+
 function parseLinks(raw: string, originalContent: string): InternalLink[] {
   const links: InternalLink[] = [];
   const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
 
   for (const line of lines) {
+    // Skip decorative lines
+    if (!line.includes('|')) continue;
+
     const parts = line.split('|').map((p) => p.trim());
     if (parts.length < 2) continue;
 
-    const [anchor, url] = parts;
-    if (!anchor || !url) continue;
+    // Strip leading list markers (1., 2., -, •) then strip surrounding quotes
+    const anchor = stripQuotes(
+      parts[0].replace(/^\d+\.\s*/, '').replace(/^[-•*]\s*/, '')
+    );
+    const url = stripQuotes(parts[1]);
 
-    const anchorExistsInContent = originalContent.toLowerCase().includes(anchor.toLowerCase());
-    if (anchorExistsInContent) {
+    // Must have content and a valid URL
+    if (!anchor || !url || !url.startsWith('http')) continue;
+
+    // Anchor must exist verbatim (case-insensitive) in the article
+    if (originalContent.toLowerCase().includes(anchor.toLowerCase())) {
       links.push({ anchorText: anchor, url, isLive: true });
     }
   }

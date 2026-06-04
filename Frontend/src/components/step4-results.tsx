@@ -10,8 +10,6 @@ import {
   ExternalLink,
   RotateCcw,
   Sparkles,
-  Eye,
-  EyeOff,
   FileCode,
   ShieldCheck,
 } from 'lucide-react';
@@ -219,7 +217,6 @@ const cardVariants = {
 
 export function Step4Results({ results, provider, keyword, onStartOver }: Step4Props) {
   const providerInfo = PROVIDERS.find((p) => p.id === provider);
-  const [showPreview, setShowPreview] = useState(false);
 
   const timestamp = useMemo(() => {
     return new Date().toLocaleString('en-US', {
@@ -351,153 +348,60 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
               Ready
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <motion.button
-              onClick={() => setShowPreview((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs cursor-pointer"
-              style={{
-                background: showPreview ? 'rgba(108, 99, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
-                border: `1px solid ${showPreview ? 'rgba(108, 99, 255, 0.3)' : 'rgba(255, 255, 255, 0.06)'}`,
-                color: showPreview ? '#6C63FF' : '#8B8BAD',
-                fontWeight: 500,
-              }}
-              whileTap={{ scale: 0.95 }}
-            >
-              {showPreview ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-              {showPreview ? 'Editor' : 'Preview'}
-            </motion.button>
-            <CopyButton text={contentBlockText} label="Copy All" />
-          </div>
+          <CopyButton text={contentBlockText} label="Copy All" />
         </div>
 
-        {showPreview ? (
-          /* Article preview — rendered as real typography */
-          <div
-            className="rounded-xl p-6"
-            style={{ background: '#F9FAFB', border: '1px solid #E5E7EB' }}
-          >
-            <h2
-              style={{
-                fontSize: '1.375rem',
-                fontWeight: 700,
-                color: '#111827',
-                lineHeight: '1.4',
-                marginBottom: '1rem',
-                fontFamily: 'Georgia, serif',
-              }}
-            >
-              {results.h2}
-            </h2>
-            <p
-              style={{
-                fontSize: '1rem',
-                lineHeight: '1.85',
-                color: '#374151',
-                marginBottom: '1.5rem',
-                fontFamily: 'Georgia, serif',
-              }}
-            >
-              {results.paragraph1}
-            </p>
-            <h3
-              style={{
-                fontSize: '1.125rem',
-                fontWeight: 600,
-                color: '#1F2937',
-                lineHeight: '1.4',
-                marginBottom: '0.75rem',
-                fontFamily: 'Georgia, serif',
-              }}
-            >
-              {results.h3}
-            </h3>
-            <p
-              style={{
-                fontSize: '1rem',
-                lineHeight: '1.85',
-                color: '#374151',
-                fontFamily: 'Georgia, serif',
-              }}
-            >
-              {results.paragraph2}
-            </p>
-          </div>
-        ) : (
-          /* Editor view — labelled sections with copy buttons */
-          <div
-            className="rounded-xl p-5 space-y-4"
+        {/* Article preview — clean, rendered typography */}
+        <div
+          className="rounded-xl p-6"
+          style={{ background: '#F9FAFB', border: '1px solid #E5E7EB' }}
+        >
+          <h2
             style={{
-              background: 'rgba(10, 10, 15, 0.5)',
-              border: '1px solid rgba(42, 42, 62, 0.5)',
+              fontSize: '1.375rem',
+              fontWeight: 700,
+              color: '#111827',
+              lineHeight: '1.4',
+              marginBottom: '1rem',
+              fontFamily: 'Georgia, serif',
             }}
           >
-            {/* H2 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs" style={{ color: '#8B8BAD', fontWeight: 500 }}>
-                  H2 Heading
-                </span>
-                <CopyButton text={results.h2} label="Copy H2" />
-              </div>
-              <h2 className="gradient-text" style={{ fontSize: '1.25rem', fontWeight: 700 }}>
-                {results.h2}
-              </h2>
-              <div
-                className="w-full h-px mt-3"
-                style={{ background: 'linear-gradient(90deg, #6C63FF40, transparent)' }}
-              />
-            </div>
-
-            {/* P1 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: '#8B8BAD', fontWeight: 500 }}>
-                    Paragraph 1
-                  </span>
-                  <WordCountBadge text={results.paragraph1} />
-                </div>
-                <CopyButton text={results.paragraph1} label="Copy P1" />
-              </div>
-              <p style={{ color: '#C8C8E0', lineHeight: '1.8', fontSize: '0.875rem' }}>
-                {results.paragraph1}
-              </p>
-            </div>
-
-            {/* H3 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs" style={{ color: '#8B8BAD', fontWeight: 500 }}>
-                  H3 Subheading
-                </span>
-                <CopyButton text={results.h3} label="Copy H3" />
-              </div>
-              <h3 className="gradient-text-pink" style={{ fontSize: '1.0625rem', fontWeight: 600 }}>
-                {results.h3}
-              </h3>
-              <div
-                className="w-full h-px mt-3"
-                style={{ background: 'linear-gradient(90deg, #FF6B9540, transparent)' }}
-              />
-            </div>
-
-            {/* P2 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: '#8B8BAD', fontWeight: 500 }}>
-                    Paragraph 2
-                  </span>
-                  <WordCountBadge text={results.paragraph2} />
-                </div>
-                <CopyButton text={results.paragraph2} label="Copy P2" />
-              </div>
-              <p style={{ color: '#C8C8E0', lineHeight: '1.8', fontSize: '0.875rem' }}>
-                {results.paragraph2}
-              </p>
-            </div>
-          </div>
-        )}
+            {results.h2}
+          </h2>
+          <p
+            style={{
+              fontSize: '1rem',
+              lineHeight: '1.85',
+              color: '#374151',
+              marginBottom: '1.5rem',
+              fontFamily: 'Georgia, serif',
+            }}
+          >
+            {results.paragraph1}
+          </p>
+          <h3
+            style={{
+              fontSize: '1.125rem',
+              fontWeight: 600,
+              color: '#1F2937',
+              lineHeight: '1.4',
+              marginBottom: '0.75rem',
+              fontFamily: 'Georgia, serif',
+            }}
+          >
+            {results.h3}
+          </h3>
+          <p
+            style={{
+              fontSize: '1rem',
+              lineHeight: '1.85',
+              color: '#374151',
+              fontFamily: 'Georgia, serif',
+            }}
+          >
+            {results.paragraph2}
+          </p>
+        </div>
       </motion.div>
 
       {/* Card 2 — Meta Data */}
