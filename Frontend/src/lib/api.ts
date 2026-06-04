@@ -117,49 +117,51 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 export function formatResultsAsMarkdown(result: SEOResult): string {
+  // Plain-text fallback (no ## symbols — headings appear on their own line).
+  // Google Docs / Word use the HTML version (h2/h3) via the rich clipboard.
   const linkLines = result.internalLinks
     .map(
       (link, i) =>
-        `${i + 1}. **Anchor text:** "${link.anchorText}"\n   **Link to:** ${link.url}`
+        `${i + 1}. Anchor text: "${link.anchorText}"\n   Link to: ${link.url}`
     )
     .join('\n\n');
 
-  return `## ${result.h2}
+  return `${result.h2}
 
 ${result.paragraph1}
 
-### ${result.h3}
+${result.h3}
 
 ${result.paragraph2}
 
-**Meta Title:** ${result.metaTitle}
+Meta Title: ${result.metaTitle}
 
-**Meta Description:** ${result.metaDescription}
+Meta Description: ${result.metaDescription}
 
-**Internal Links with Anchor Texts:**
+Internal Links with Anchor Texts:
 
-${linkLines}
+${linkLines || 'No internal links found.'}
 
-**PLACEMENT RECOMMENDATION:** ${result.placementRecommendation}`;
+PLACEMENT RECOMMENDATION: ${result.placementRecommendation}`;
 }
 
-/** Content block only — H2, P1, H3, P2 as rich HTML */
+/** Content block only — H2 and H3 as proper document headings */
 export function formatResultsAsHTML(result: SEOResult): string {
   return [
     `<h2>${result.h2}</h2>`,
     `<p>${result.paragraph1}</p>`,
     `<h3>${result.h3}</h3>`,
     `<p>${result.paragraph2}</p>`,
-  ].join('\n\n');
+  ].join('\n');
 }
 
-/** Full output as rich HTML — headings bold, labels bold, links clickable */
+/** Full output — H2/H3 as document headings, labels bold, links as text */
 export function formatResultsAsFullHTML(result: SEOResult): string {
   const linkItems = result.internalLinks
     .map(
       (link, i) =>
         `<p>${i + 1}. <strong>Anchor text:</strong> &ldquo;${link.anchorText}&rdquo;<br>` +
-        `<strong>Link to:</strong> <a href="${link.url}">${link.url}</a></p>`
+        `<strong>Link to:</strong> ${link.url}</p>`
     )
     .join('\n');
 
@@ -171,9 +173,9 @@ export function formatResultsAsFullHTML(result: SEOResult): string {
     `<p><strong>Meta Title:</strong> ${result.metaTitle}</p>`,
     `<p><strong>Meta Description:</strong> ${result.metaDescription}</p>`,
     `<p><strong>Internal Links with Anchor Texts:</strong></p>`,
-    linkItems,
+    linkItems || `<p>No internal links found.</p>`,
     `<p><strong>PLACEMENT RECOMMENDATION:</strong> ${result.placementRecommendation}</p>`,
-  ].join('\n\n');
+  ].join('\n');
 }
 
 /**
