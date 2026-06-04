@@ -106,31 +106,30 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 export function formatResultsAsMarkdown(result: SEOResult): string {
+  const linkLines = result.internalLinks
+    .map((link, i) => `${i + 1}. "${link.anchorText}" | ${link.url}`)
+    .join('\n');
+
   return `## ${result.h2}
 
-**Heading 2:** ${result.h2}
-
-**Paragraph 1:**
 ${result.paragraph1}
 
-**Heading 3:** ${result.h3}
+### ${result.h3}
 
-**Paragraph 2:**
 ${result.paragraph2}
 
-**Meta Title:** ${result.metaTitle} (${result.metaTitle.length}/55 chars)
+---
+Meta Title: ${result.metaTitle} (${result.metaTitle.length}/55 chars)
+Meta Description: ${result.metaDescription} (${result.metaDescription.length}/145 chars)
 
-**Meta Description:** ${result.metaDescription} (${result.metaDescription.length}/145 chars)
+---
+Internal Links:
+${linkLines}
 
-**Internal Links with Anchor Texts:**
+---
+Placement: ${result.placementRecommendation}`;
+}
 
-${result.internalLinks
-  .map(
-    (link, i) =>
-      `${i + 1}. **Anchor text:** "${link.anchorText}"\n   **Link to:** ${link.url}`
-  )
-  .join('\n\n')}
-
-**PLACEMENT RECOMMENDATION:**
-${result.placementRecommendation}`;
+export function formatResultsAsHTML(result: SEOResult): string {
+  return `<h2>${result.h2}</h2>\n\n<p>${result.paragraph1}</p>\n\n<h3>${result.h3}</h3>\n\n<p>${result.paragraph2}</p>`;
 }

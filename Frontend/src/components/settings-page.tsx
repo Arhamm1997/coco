@@ -20,6 +20,9 @@ import {
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { AIProvider, PROVIDERS } from '../lib/types';
+import { UsageStats } from '../lib/api';
+import { SessionUsage } from '../App';
+import { UsageStatsPanel } from './usage-stats-panel';
 
 interface SettingsPageProps {
   urls: string[];
@@ -32,6 +35,10 @@ interface SettingsPageProps {
   onModelChange: (m: string) => void;
   onApiKeyChange: (k: string) => void;
   onClose: () => void;
+  sessionUsage: SessionUsage[];
+  globalStats: UsageStats | null;
+  onRefreshStats: () => void;
+  isRefreshingStats?: boolean;
 }
 
 const providerIcons: Record<AIProvider, React.ReactNode> = {
@@ -59,6 +66,10 @@ export function SettingsPage({
   onModelChange,
   onApiKeyChange,
   onClose,
+  sessionUsage,
+  globalStats,
+  onRefreshStats,
+  isRefreshingStats,
 }: SettingsPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -504,6 +515,14 @@ export function SettingsPage({
           </div>
         </div>
       </div>
+
+      {/* Usage Stats Panel */}
+      <UsageStatsPanel
+        sessionUsage={sessionUsage}
+        globalStats={globalStats}
+        onRefresh={onRefreshStats}
+        isRefreshing={isRefreshingStats}
+      />
 
       {/* Done button */}
       <motion.button
