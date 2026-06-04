@@ -94,9 +94,25 @@ function scoreRelevance(
   return score;
 }
 
+// Check that keyword at position idx is a WHOLE WORD (not inside a longer word)
+function isWholeWord(text: string, idx: number, kw: string): boolean {
+  const before = idx > 0 ? text[idx - 1] : ' ';
+  const after = idx + kw.length < text.length ? text[idx + kw.length] : ' ';
+  return !/[a-z]/.test(before) && !/[a-z]/.test(after);
+}
+
+// A phrase is only useful as anchor text if it contains at least one
+// meaningful word (length ≥ 4, not a stop-word)
+function hasMeaningfulWord(phrase: string): boolean {
+  return phrase.toLowerCase().split(/\s+/).some(
+    (w) => w.length >= 4 && !STOP_WORDS.has(w) && !CONTENT_STOP.has(w)
+  );
+}
+
 // Find an anchor text phrase that BOTH:
-//   1. Exists verbatim in the article content
+//   1. Exists verbatim in the article content (whole-word match)
 //   2. Is drawn from URL slug keywords
+//   3. Contains at least one meaningful (non-stop) word
 function findAnchorText(url: string, content: string): string | null {
   const contentLower = content.toLowerCase();
 
@@ -120,39 +136,50 @@ function findAnchorText(url: string, content: string): string | null {
     for (let i = 0; i <= slugWords.length - len; i++) {
       const phrase = slugWords.slice(i, i + len).join(' ');
       const idx = contentLower.indexOf(phrase);
-      if (idx !== -1) {
+      // Require whole-word boundary at start and end of phrase
+      if (idx !== -1 && isWholeWord(contentLower, idx, phrase) && hasMeaningfulWord(phrase)) {
         return content.substring(idx, idx + phrase.length);
       }
     }
   }
 
   // Strategy 2: single meaningful slug keyword → build 2–3 word phrase from content
+  // Only use keywords that are MEANINGFUL (length ≥ 5, not a stop-word)
   for (const keyword of slugWords) {
-    if (keyword.length < 4 || STOP_WORDS.has(keyword)) continue;
-    const idx = contentLower.indexOf(keyword);
+    if (keyword.length < 5 || STOP_WORDS.has(keyword) || CONTENT_STOP.has(keyword)) continue;
+
+    // Find whole-word occurrence in content
+    let searchFrom = 0;
+    let idx = -1;
+    while (searchFrom < contentLower.length) {
+      const found = contentLower.indexOf(keyword, searchFrom);
+      if (found === -1) break;
+      if (isWholeWord(contentLower, found, keyword)) { idx = found; break; }
+      searchFrom = found + 1;
+    }
     if (idx === -1) continue;
 
     const kwEnd = idx + keyword.length;
     const beforeSpace = contentLower.lastIndexOf(' ', idx - 1);
-    const afterSpace = contentLower.indexOf(' ', kwEnd);
+    const afterSpace  = contentLower.indexOf(' ', kwEnd);
     const afterSpace2 = afterSpace !== -1 ? contentLower.indexOf(' ', afterSpace + 1) : -1;
 
     // Try 3-word: prev + keyword + next
     if (beforeSpace !== -1 && afterSpace !== -1 && idx - beforeSpace > 1) {
       const three = content.substring(beforeSpace + 1, afterSpace);
-      if (three.split(' ').length === 3) return three;
+      if (three.split(' ').length === 3 && hasMeaningfulWord(three)) return three;
     }
 
     // Try 2-word: keyword + next word
     if (afterSpace !== -1 && afterSpace2 !== -1) {
       const two = content.substring(idx, afterSpace2);
-      if (two.split(' ').length === 2) return two;
+      if (two.split(' ').length === 2 && hasMeaningfulWord(two)) return two;
     }
 
     // Try 2-word: prev word + keyword
     if (beforeSpace !== -1 && idx - beforeSpace > 1) {
       const two = content.substring(beforeSpace + 1, kwEnd);
-      if (two.split(' ').length === 2) return two;
+      if (two.split(' ').length === 2 && hasMeaningfulWord(two)) return two;
     }
   }
 
