@@ -30,8 +30,9 @@ export function validateOptimizeRequest(body: unknown): ValidationResult {
     return { valid: false, message: 'All URLs must be valid strings starting with http' };
   }
 
-  if (!req.apiKey || typeof req.apiKey !== 'string' || req.apiKey.trim().length < 10) {
-    return { valid: false, message: 'A valid API key is required (minimum 10 characters)' };
+  // apiKey is optional — the backend will fall back to the server-side env var for the provider
+  if (req.apiKey !== undefined && req.apiKey !== '' && req.apiKey.trim().length < 10) {
+    return { valid: false, message: 'API key looks too short (minimum 10 characters)' };
   }
 
   if (!req.provider || !(VALID_PROVIDERS as readonly string[]).includes(req.provider)) {

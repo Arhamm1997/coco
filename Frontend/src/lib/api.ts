@@ -93,6 +93,17 @@ export async function fetchUsageStats(): Promise<UsageStats | null> {
   }
 }
 
+export async function fetchPreconfiguredProviders(): Promise<Record<string, boolean>> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/config`);
+    if (!res.ok) return {};
+    const json = await res.json();
+    return (json.preconfiguredProviders as Record<string, boolean>) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export async function checkBackendHealth(): Promise<boolean> {
   try {
     const controller = new AbortController();

@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { motion } from 'motion/react';
-import { Cpu, Key, ArrowLeft, Sparkles, Eye, EyeOff, Lock, Zap, Brain, Globe, Bot } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Cpu, Key, ArrowLeft, Sparkles, Eye, EyeOff, Lock, Zap, Brain, Globe, Bot, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { AIProvider, PROVIDERS } from '../lib/types';
+import { fetchPreconfiguredProviders } from '../lib/api';
 
 interface Step3Props {
   provider: AIProvider | null;
@@ -18,14 +19,14 @@ const providerIcons: Record<AIProvider, React.ReactNode> = {
   claude: <Brain className="w-6 h-6" />,
   openai: <Zap className="w-6 h-6" />,
   gemini: <Globe className="w-6 h-6" />,
-  grok: <Bot className="w-6 h-6" />,
+  grok:   <Bot className="w-6 h-6" />,
 };
 
 const providerColors: Record<AIProvider, string> = {
   claude: '#D4A0FF',
   openai: '#00C896',
   gemini: '#4285F4',
-  grok: '#8B8BAD',
+  grok:   '#8B8BAD',
 };
 
 export function Step3Provider({
@@ -38,8 +39,15 @@ export function Step3Provider({
   loading,
 }: Step3Props) {
   const [showKey, setShowKey] = useState(false);
+  const [preconfigured, setPreconfigured] = useState<Record<string, boolean>>({});
 
-  const selectedProvider = PROVIDERS.find((p) => p.id === provider);
+  useEffect(() => {
+    fetchPreconfiguredProviders().then(setPreconfigured);
+  }, []);
+
+  const isProviderPreconfigured = provider ? !!preconfigured[provider] : false;
+  // Effective key: what the user typed, or blank if preconfigured (server handles it)
+  const effectiveKeyReady = isProviderPreconfigured || apiKey.trim().length >= 10;
 
   const handleGenerate = () => {
     if (!provider) {
@@ -48,9 +56,9 @@ export function Step3Provider({
       });
       return;
     }
-    if (!apiKey.trim()) {
+    if (!effectiveKeyReady) {
       toast.error('API key required', {
-        description: 'Please enter your API key.',
+        description: 'Enter your API key or use a pre-configured provider.',
       });
       return;
     }
@@ -71,7 +79,7 @@ export function Step3Provider({
           border: '1px solid rgba(255, 255, 255, 0.08)',
         }}
       >
-        {/* Pink/purple left border */}
+        {/* Left border accent */}
         <div
           className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
           style={{ background: 'linear-gradient(180deg, #6C63FF, #FF6B9D)' }}
@@ -90,8 +98,12 @@ export function Step3Provider({
             <Cpu className="w-5 h-5" style={{ color: '#FF6B9D' }} />
           </div>
           <div>
-            <h2 className="text-[#F0F0FF]" style={{ fontSize: '1.25rem', fontWeight: 600 }}>Select AI Provider</h2>
-            <p className="text-xs" style={{ color: '#8B8BAD' }}>Choose your preferred AI model</p>
+            <h2 className="text-[#F0F0FF]" style={{ fontSize: '1.25rem', fontWeight: 600 }}>
+              Select AI Provider
+            </h2>
+            <p className="text-xs" style={{ color: '#8B8BAD' }}>
+              Choose your preferred AI model
+            </p>
           </div>
         </div>
 
@@ -99,21 +111,18 @@ export function Step3Provider({
         <div className="grid grid-cols-2 gap-3 mb-6">
           {PROVIDERS.map((p) => {
             const isSelected = provider === p.id;
+            const hasKey = !!preconfigured[p.id];
             return (
               <motion.button
                 key={p.id}
                 onClick={() => onProviderChange(p.id)}
                 className="relative rounded-xl p-4 text-left transition-all cursor-pointer"
                 style={{
-                  background: isSelected
-                    ? 'rgba(108, 99, 255, 0.1)'
-                    : 'rgba(255, 255, 255, 0.02)',
+                  background: isSelected ? 'rgba(108, 99, 255, 0.1)' : 'rgba(255, 255, 255, 0.02)',
                   border: isSelected
                     ? '1px solid rgba(108, 99, 255, 0.5)'
                     : '1px solid rgba(255, 255, 255, 0.06)',
-                  boxShadow: isSelected
-                    ? '0 0 20px rgba(108, 99, 255, 0.15)'
-                    : 'none',
+                  boxShadow: isSelected ? '0 0 20px rgba(108, 99, 255, 0.15)' : 'none',
                 }}
                 animate={isSelected ? { scale: 1.03 } : { scale: 1 }}
                 whileHover={{ scale: isSelected ? 1.03 : 1.02, borderColor: 'rgba(255,255,255,0.15)' }}
@@ -126,7 +135,21 @@ export function Step3Provider({
                     layoutId="provider-indicator"
                   />
                 )}
-                <div className="mb-2" style={{ color: providerColors[p.id] }}>
+                {/* Pre-configured badge */}
+                {hasKey && (
+                  <div
+                    className="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-xs"
+                    style={{
+                      background: 'rgba(0, 200, 150, 0.12)',
+                      color: '#00C896',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                    Ready
+                  </div>
+                )}
+                <div className="mb-2 mt-3" style={{ color: providerColors[p.id] }}>
                   {providerIcons[p.id]}
                 </div>
                 <p style={{ color: '#F0F0FF', fontSize: '0.9375rem', fontWeight: 600 }}>
@@ -140,50 +163,92 @@ export function Step3Provider({
           })}
         </div>
 
-        {/* API Key */}
-        <div className="mb-8">
-          <label className="flex items-center gap-2 mb-2 text-sm" style={{ color: '#F0F0FF', fontWeight: 500 }}>
-            <Key className="w-4 h-4" style={{ color: '#FF6B9D' }} />
-            API Key
-          </label>
-          <div className="relative">
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={apiKey}
-              onChange={(e) => onApiKeyChange(e.target.value)}
-              placeholder={selectedProvider?.placeholder || 'Select a provider first...'}
-              className="w-full rounded-xl px-4 py-3 pr-12 outline-none transition-all"
-              style={{
-                background: '#0A0A0F',
-                border: '1px solid #2A2A3E',
-                color: '#F0F0FF',
-                fontSize: '0.875rem',
-                fontFamily: 'monospace',
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#6C63FF';
-                e.target.style.boxShadow = '0 0 0 3px rgba(108,99,255,0.25)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#2A2A3E';
-                e.target.style.boxShadow = 'none';
-              }}
-            />
-            <button
-              onClick={() => setShowKey(!showKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer transition-colors hover:bg-white/5"
-              style={{ color: '#4A4A6A' }}
+        {/* API Key section — hidden when provider is pre-configured */}
+        <AnimatePresence mode="wait">
+          {isProviderPreconfigured ? (
+            <motion.div
+              key="preconfigured"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-8"
             >
-              {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="flex items-center gap-1.5 mt-2">
-            <Lock className="w-3 h-3" style={{ color: '#4A4A6A' }} />
-            <span className="text-xs" style={{ color: '#4A4A6A' }}>
-              Your key is never stored. It's used only for this request.
-            </span>
-          </div>
-        </div>
+              <div
+                className="flex items-center gap-3 rounded-xl px-4 py-3"
+                style={{
+                  background: 'rgba(0, 200, 150, 0.06)',
+                  border: '1px solid rgba(0, 200, 150, 0.2)',
+                }}
+              >
+                <ShieldCheck className="w-5 h-5 shrink-0" style={{ color: '#00C896' }} />
+                <div>
+                  <p style={{ color: '#00C896', fontWeight: 600, fontSize: '0.875rem' }}>
+                    API key pre-configured
+                  </p>
+                  <p style={{ color: '#4A4A6A', fontSize: '0.75rem' }}>
+                    Your server key will be used automatically. No input needed.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="apikey-input"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-8"
+            >
+              <label
+                className="flex items-center gap-2 mb-2 text-sm"
+                style={{ color: '#F0F0FF', fontWeight: 500 }}
+              >
+                <Key className="w-4 h-4" style={{ color: '#FF6B9D' }} />
+                API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(e) => onApiKeyChange(e.target.value)}
+                  placeholder={
+                    PROVIDERS.find((p) => p.id === provider)?.placeholder ||
+                    'Select a provider first...'
+                  }
+                  className="w-full rounded-xl px-4 py-3 pr-12 outline-none transition-all"
+                  style={{
+                    background: '#0A0A0F',
+                    border: '1px solid #2A2A3E',
+                    color: '#F0F0FF',
+                    fontSize: '0.875rem',
+                    fontFamily: 'monospace',
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = '#6C63FF';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(108,99,255,0.25)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = '#2A2A3E';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+                <button
+                  onClick={() => setShowKey(!showKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded cursor-pointer transition-colors hover:bg-white/5"
+                  style={{ color: '#4A4A6A' }}
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 mt-2">
+                <Lock className="w-3 h-3" style={{ color: '#4A4A6A' }} />
+                <span className="text-xs" style={{ color: '#4A4A6A' }}>
+                  Your key is never stored. It&apos;s used only for this request.
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Navigation */}
         <div className="flex gap-3">
@@ -212,11 +277,7 @@ export function Step3Provider({
               fontSize: '0.9375rem',
               fontWeight: 600,
             }}
-            whileHover={
-              !loading
-                ? { y: -2, boxShadow: '0 8px 30px rgba(108, 99, 255, 0.35)' }
-                : {}
-            }
+            whileHover={!loading ? { y: -2, boxShadow: '0 8px 30px rgba(108,99,255,0.35)' } : {}}
             whileTap={!loading ? { scale: 0.98 } : {}}
           >
             {loading ? (
