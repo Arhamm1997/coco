@@ -1,8 +1,9 @@
 import { InternalLink, ParsedOutput } from '@/types';
 
 export function parseAIResponse(text: string, originalContent: string): ParsedOutput {
-  // Primary: XML tag parser (matches new HOC prompt format)
-  const xmlResult = parseXMLFormat(text, originalContent);
+  // Primary: XML tag parser — collects all links without anchor validation
+  // (route.ts validates anchors against article + generated paragraphs)
+  const xmlResult = parseXMLFormat(text);
   if (xmlResult.h2 && xmlResult.paragraph1) return xmlResult;
 
   // Fallback: label-based parser (backward compatibility)
@@ -23,12 +24,15 @@ function stripQuotes(s: string): string {
     .trim();
 }
 
-function parseLinks(raw: string, originalContent: string): InternalLink[] {
+// The parser collects ALL links Claude outputs — it does NOT validate anchor text.
+// Verbatim + relevance validation is done in route.ts with the full searchable
+// content (original article + generated paragraphs). Rejecting here would drop
+// valid links before the expanded check ever runs.
+function parseLinks(raw: string): InternalLink[] {
   const links: InternalLink[] = [];
   const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
 
   for (const line of lines) {
-    // Skip decorative lines
     if (!line.includes('|')) continue;
 
     const parts = line.split('|').map((p) => p.trim());
@@ -41,21 +45,18 @@ function parseLinks(raw: string, originalContent: string): InternalLink[] {
         .replace(/^[-•*]\s*/, '')
         .replace(/\*\*/g, '')
     );
-    const url = stripQuotes(parts[1]).replace(/[<>]/g, '').trim(); // also strip angle brackets
+    const url = stripQuotes(parts[1]).replace(/[<>]/g, '').trim();
 
-    // Must have content and a valid URL
-    if (!anchor || !url || !url.startsWith('http')) continue;
+    // Minimal sanity check only — route.ts handles full validation
+    if (!anchor || anchor.length < 2 || !url || !url.startsWith('http')) continue;
 
-    // Anchor must exist verbatim (case-insensitive) in the article
-    if (originalContent.toLowerCase().includes(anchor.toLowerCase())) {
-      links.push({ anchorText: anchor, url, isLive: true });
-    }
+    links.push({ anchorText: anchor, url, isLive: true });
   }
 
   return links;
 }
 
-function parseXMLFormat(text: string, originalContent: string): ParsedOutput {
+function parseXMLFormat(text: string): ParsedOutput {
   return {
     h2:                      extractXMLTag(text, 'h2') || 'SEO Optimised Section',
     h3:                      extractXMLTag(text, 'h3') || 'Key Insights',
@@ -63,7 +64,7 @@ function parseXMLFormat(text: string, originalContent: string): ParsedOutput {
     paragraph2:              extractXMLTag(text, 'paragraph2'),
     metaTitle:               extractXMLTag(text, 'meta_title').substring(0, 55),
     metaDescription:         extractXMLTag(text, 'meta_description').substring(0, 145),
-    internalLinks:           parseLinks(extractXMLTag(text, 'links'), originalContent),
+    internalLinks:           parseLinks(extractXMLTag(text, 'links')),
     placementRecommendation: extractXMLTag(text, 'placement'),
   };
 }
