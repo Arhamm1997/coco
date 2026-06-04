@@ -100,13 +100,13 @@ export async function POST(req: NextRequest) {
     // ── 7. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
-    // ── 8. Validate links: anchor must be verbatim in content AND
-    //       at least one anchor word must appear in the URL slug ─────────────
-    const validatedLinks = parsed.internalLinks.filter((link) => {
-      const anchorInContent = content.toLowerCase().includes(link.anchorText.toLowerCase());
-      const anchorInURL    = anchorIsRelevantToURL(link.anchorText, link.url);
-      return anchorInContent && anchorInURL;
-    });
+    // ── 8. Validate links: anchor must exist verbatim in content ──────────────
+    // Topic-relevance is enforced by Claude via the system prompt.
+    // We do NOT apply anchorIsRelevantToURL here because it rejects valid links
+    // where the anchor phrasing differs from URL slug wording (e.g. synonyms).
+    const validatedLinks = parsed.internalLinks.filter((link) =>
+      content.toLowerCase().includes(link.anchorText.toLowerCase())
+    );
 
     const durationMs = Date.now() - startTime;
 
