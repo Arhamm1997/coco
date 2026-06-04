@@ -107,8 +107,11 @@ export async function checkBackendHealth(): Promise<boolean> {
 
 export function formatResultsAsMarkdown(result: SEOResult): string {
   const linkLines = result.internalLinks
-    .map((link, i) => `${i + 1}. "${link.anchorText}" | ${link.url}`)
-    .join('\n');
+    .map(
+      (link, i) =>
+        `${i + 1}. **Anchor text:** "${link.anchorText}"\n   **Link to:** ${link.url}`
+    )
+    .join('\n\n');
 
   return `## ${result.h2}
 
@@ -118,16 +121,15 @@ ${result.paragraph1}
 
 ${result.paragraph2}
 
----
-Meta Title: ${result.metaTitle} (${result.metaTitle.length}/55 chars)
-Meta Description: ${result.metaDescription} (${result.metaDescription.length}/145 chars)
+**Meta Title:** ${result.metaTitle}
 
----
-Internal Links:
+**Meta Description:** ${result.metaDescription}
+
+**Internal Links with Anchor Texts:**
+
 ${linkLines}
 
----
-Placement: ${result.placementRecommendation}`;
+**PLACEMENT RECOMMENDATION:** ${result.placementRecommendation}`;
 }
 
 export function formatResultsAsHTML(result: SEOResult): string {
