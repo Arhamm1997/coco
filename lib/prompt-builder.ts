@@ -75,18 +75,29 @@ META TITLE RULES — critical
 INTERNAL LINK RULES — all mandatory
 ════════════════════════════════════════
 1. URL must be an EXACT string match from the "address" field of the URL database. Never fabricate.
-2. Anchor text must appear WORD-FOR-WORD anywhere in the article content — beginning, middle, or end.
-   Test: anchor_text.lower() in article_content.lower() must be True.
-   Paraphrases and near-matches are NEVER acceptable.
+
+2. Anchor text — VERBATIM COPY rule (this is the most important rule):
+   a. Find a phrase that already exists word-for-word in the article content.
+   b. Copy it EXACTLY — same spelling, same word order, no additions or removals.
+   c. Do NOT surround it with quotes in the output (write: aesthetic suppliers, NOT "aesthetic suppliers").
+   d. Test before writing: mentally highlight the exact phrase in the article. If you cannot highlight it, choose different anchor text.
+   e. Paraphrases, synonyms, and near-matches will FAIL validation. Only exact copies pass.
+
+   WRONG: Article says "aesthetic suppliers" → you write "reliable aesthetic suppliers" ← adds a word, FAILS
+   WRONG: Article says "next-day dispatch" → you write "next day dispatch" ← missing hyphen, FAILS
+   RIGHT: Article says "aesthetic suppliers" → you write: aesthetic suppliers ← exact copy, no quotes, PASSES
+
 3. Anchor text must be 2–4 words only.
+
 4. DIRECT TOPIC RELEVANCE — the linked URL must be about the same specific subject as the anchor text.
    Ask yourself: "If a reader clicks this link, will they find content directly related to what they just read?"
-   — If the article is about a hotel in Phoenix → link to articles about hotels, travel, or destinations. NOT home decor.
+   — If the article is about a hotel in Phoenix → link to hotels, travel, or destinations. NOT home decor.
    — If the article is about spa treatments → link to wellness, spa, or retreat articles. NOT fashion.
    — Sharing one word like "luxury" or "design" is NOT enough. The whole topic must match.
-5. All 3 links must be FOUND (exact URL in database, anchor verbatim in content).
+
+5. All 3 links must be FOUND (exact URL in database, anchor verbatim in content, no quotes in output).
 6. All 3 URLs must be from houseofcoco.net only.
-7. Do NOT use unrelated links just to fill the count. If fewer than 3 genuinely relevant links exist, use fewer.
+7. Do NOT use unrelated links just to fill the count. Fewer relevant links beat 3 irrelevant ones.
 
 ════════════════════════════════════════
 HOW TO SEARCH THE URL DATABASE

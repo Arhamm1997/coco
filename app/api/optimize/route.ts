@@ -101,12 +101,17 @@ export async function POST(req: NextRequest) {
     const parsed = parseAIResponse(aiResponse.text, content);
 
     // ── 8. Validate links: anchor must exist verbatim in content ──────────────
-    // Topic-relevance is enforced by Claude via the system prompt.
-    // We do NOT apply anchorIsRelevantToURL here because it rejects valid links
-    // where the anchor phrasing differs from URL slug wording (e.g. synonyms).
-    const validatedLinks = parsed.internalLinks.filter((link) =>
-      content.toLowerCase().includes(link.anchorText.toLowerCase())
-    );
+    // Strip any residual surrounding quotes before checking, in case the parser
+    // missed edge cases (e.g. nested quotes or unusual Unicode variants).
+    const validatedLinks = parsed.internalLinks.filter((link) => {
+      const cleanAnchor = link.anchorText
+        .replace(/^[""''«»"'`]+/, '')
+        .replace(/[""''«»"'`]+$/, '')
+        .trim();
+      // Update the stored anchor text to the cleaned version
+      link.anchorText = cleanAnchor;
+      return content.toLowerCase().includes(cleanAnchor.toLowerCase());
+    });
 
     const durationMs = Date.now() - startTime;
 
