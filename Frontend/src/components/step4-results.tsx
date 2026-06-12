@@ -658,6 +658,12 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
           </span>
         </div>
 
+        <p className="mb-3" style={{ color: '#8B8BAD', fontSize: '0.8125rem', lineHeight: '1.6' }}>
+          Exactly where to paste the generated section into your article. The quoted words mark
+          the paragraph the section goes <em>before</em> — find them with Ctrl+F. The WHY explains
+          the choice of spot.
+        </p>
+
         <div
           className="rounded-xl p-4 relative"
           style={{ background: 'rgba(255, 184, 0, 0.03)', borderLeft: '3px solid #FFB800' }}

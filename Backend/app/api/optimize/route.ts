@@ -9,6 +9,42 @@ import { validateOptimizeRequest } from '@/lib/validators';
 import { connectDB } from '@/lib/db/connection';
 import { GenerationResult } from '@/lib/db/models/GenerationResult';
 
+// ── Placement helpers ──────────────────────────────────────────────────────
+// The AI must quote the opening words of a real paragraph so the editor can
+// Ctrl+F the spot. If the quote can't be found verbatim in the article, the
+// note is useless — replace it with a deterministic, always-sensible fallback.
+
+function normalizeForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fallbackPlacement(content: string): string {
+  const paras = content
+    .split(/\r?\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  // Prefer the last real paragraph (6+ words) over trailing one-liners/CTAs.
+  const lastReal =
+    [...paras].reverse().find((p) => p.split(/\s+/).length >= 6) ||
+    paras[paras.length - 1] ||
+    '';
+  const opening = lastReal.split(/\s+/).slice(0, 10).join(' ');
+  return `Insert this section immediately before the paragraph that begins: "${opening}". WHY: placing it just before the article's closing paragraph keeps the writer's flow intact — the section reads as a natural lead-in to the conclusion.`;
+}
+
+function ensureSensiblePlacement(aiPlacement: string, content: string): string {
+  const quoted = aiPlacement.match(/["“”]([^"“”]{10,200})["“”]/);
+  if (quoted && normalizeForSearch(content).includes(normalizeForSearch(quoted[1]))) {
+    return aiPlacement;
+  }
+  return fallbackPlacement(content);
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
@@ -100,6 +136,13 @@ export async function POST(req: NextRequest) {
     // ── 5. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
+    // Placement must point at a findable, sensible spot — validate the AI's
+    // quoted paragraph opening against the article, else use the fallback.
+    const placementRecommendation = ensureSensiblePlacement(
+      parsed.placementRecommendation,
+      content
+    );
+
     // ── 6. Validate + assemble internal links (3–7, all page-verified) ─────
     // The AI chose links using each page's REAL fetched title/description, so
     // its picks lead. Every link must still pass the hard rules:
@@ -186,7 +229,7 @@ export async function POST(req: NextRequest) {
         metaTitle:               parsed.metaTitle,
         metaDescription:         parsed.metaDescription,
         internalLinks:           validatedLinks,
-        placementRecommendation: parsed.placementRecommendation,
+        placementRecommendation,
         tokensUsed:              aiResponse.tokensUsed,
         durationMs,
       });
@@ -205,7 +248,7 @@ export async function POST(req: NextRequest) {
         metaTitle:               parsed.metaTitle,
         metaDescription:         parsed.metaDescription,
         internalLinks:           validatedLinks,
-        placementRecommendation: parsed.placementRecommendation,
+        placementRecommendation,
         provider,
         tokensUsed:              aiResponse.tokensUsed,
       },

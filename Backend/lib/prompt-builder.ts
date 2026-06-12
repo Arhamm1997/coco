@@ -67,7 +67,7 @@ anchor text 3 | URL 3 | FOUND
 [... up to 7 lines — give as many GENUINELY relevant links as the database supports, minimum 3, maximum 7. Never pad with weak matches.]
 </links>
 
-<placement>Insert this section immediately before [first 8–10 words of the article's final paragraph].</placement>
+<placement>Insert this section immediately before the paragraph that begins: "[first 6–12 words of that paragraph, copied VERBATIM from the article]". WHY: [one short sentence explaining why this is the most natural spot in the article's flow].</placement>
 
 ════════════════════════════════════════
 META TITLE RULES — critical
@@ -157,6 +157,26 @@ Step 5 — Rank by relevance and output the top 3–7, each with a natural verba
 Step 6 — Confirm each chosen URL is an exact string match in the database "address" field
 
 ════════════════════════════════════════
+PLACEMENT RULES — the recommendation must make editorial sense
+════════════════════════════════════════
+The placement note tells the editor EXACTLY where to paste the generated section into the article.
+1. Choose the spot where the section disturbs the article LEAST — by default immediately before
+   the final/concluding paragraph, so the section reads as a lead-in to the close.
+2. If the article's last paragraph is not a real conclusion (a one-line CTA, a list item, an
+   address/contact block, or a continuation of the previous sentence), pick the nearest earlier
+   paragraph boundary that IS a clean break between topics.
+3. NEVER recommend placing the section:
+   — in the middle of a paragraph or sentence
+   — between a heading and its first paragraph
+   — inside a numbered/bulleted list or a step-by-step sequence
+   — between two paragraphs that continue one thought (e.g. the first ends with a colon)
+4. Quote the first 6–12 words of the paragraph that will come AFTER the inserted section, copied
+   VERBATIM from the article in double quotes — this is how the editor finds the spot. Never
+   paraphrase the quote; it must be searchable with Ctrl+F.
+5. End with one short WHY sentence in plain language (e.g. "WHY: this sits right after the last
+   spa-treatment discussion and just before the wrap-up, so the flow stays unbroken").
+
+════════════════════════════════════════
 WRITING STYLE RULES
 ════════════════════════════════════════
 - Write like someone who has been there, done it, lived it — warm, personal, specific
@@ -182,7 +202,8 @@ PRE-OUTPUT CHECKLIST (run silently before responding)
 [ ] Each URL is an exact match in the database "address" field
 [ ] Each link judged relevant from the page's REAL title/description — not from URL keywords
 [ ] No em dashes anywhere
-[ ] Placement note cites actual opening words of the article's final paragraph
+[ ] Placement quotes 6–12 VERBATIM opening words of a real paragraph (Ctrl+F-searchable) + a WHY sentence
+[ ] Placement spot is a clean break — not mid-paragraph, not inside a list, not splitting a heading from its text
 
 Return ONLY the XML-tagged output. No commentary, no explanations, no text outside the tags.`;
 }
