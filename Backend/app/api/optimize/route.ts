@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLs, findBestMatchingURLsRelaxed, buildInternalLinks } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance } from '@/lib/url-matcher';
+import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
 import { validateOptimizeRequest } from '@/lib/validators';
@@ -42,30 +43,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── 2. Find the most relevant URLs from the spreadsheet ────────────────
-    // The spreadsheet is the authority — no HTTP liveness check needed.
-    // Strict search first: requires pre-confirmed anchor text in content + relevance.
-    let candidateURLs = findBestMatchingURLs(content, urls, primaryKeyword, 50);
+    // ── 2. Pre-filter by slug, then READ each candidate page ──────────────
+    // A keyword in the URL slug is NOT evidence of relevance — the page must
+    // actually be about the article's topic. So:
+    //   a) narrow the sheet to the top slug-relevant candidates (cheap filter),
+    //   b) fetch each candidate and read its REAL title/description/headings/body,
+    //   c) keep only pages whose actual content overlaps this article.
+    const slugCandidates = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 40);
 
-    // Relaxed fallback: relevance score only — no pre-confirmed anchor required.
-    if (candidateURLs.length < 3) {
-      candidateURLs = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 50);
-    }
+    const summaries = await fetchPageSummaries(slugCandidates.map((c) => c.url), 10);
 
-    // Final fallback: if still under 10 candidates, pad with more relaxed matches
-    // from the remaining pool so the AI always has enough URLs to choose from.
-    if (candidateURLs.length < 10) {
-      const seen = new Set(candidateURLs.map((u) => u.url));
-      const extras = findBestMatchingURLsRelaxed(
-        content,
-        urls.filter((u) => !seen.has(u)),
-        primaryKeyword,
-        50
-      );
-      candidateURLs = [...candidateURLs, ...extras].slice(0, 50);
-    }
+    const enriched = slugCandidates.map((c) => {
+      const page = summaries.get(c.url) ?? null;
+      const rel = page ? scorePageRelevance(page, content, primaryKeyword) : null;
+      return {
+        ...c,
+        pageTitle: page?.title || '',
+        pageDescription: page?.description || '',
+        pageScore: rel?.score ?? 0,
+        strongMatches: rel?.strongMatches ?? 0,
+        pkInPage: rel?.pkInPage ?? false,
+        wasRead: page !== null,
+      };
+    });
 
-    const topCandidates = candidateURLs.slice(0, 25);
+    // Confirmed relevant = we READ the page and its real content matches:
+    // either the primary keyword appears in its title/description, or at
+    // least 2 of the article's topics appear in title/description/headings
+    // AND the overall overlap score clears the bar.
+    const confirmed = enriched
+      .filter((e) => e.wasRead && (e.pkInPage || e.strongMatches >= 2) && e.pageScore >= 12)
+      .sort((a, b) => b.pageScore - a.pageScore);
+
+    // Fallback when the site can't be read (offline/blocked): slug order, so
+    // the feature degrades instead of dying. Page-verified mode needs ≥3 hits.
+    const usingPageData = confirmed.length >= 3;
+    const topCandidates = (usingPageData ? confirmed : enriched).slice(0, 25);
     const liveUrlCount = topCandidates.length;
 
     // ── 3. Build the AI prompt — pass top 25 candidates ───────────────────
@@ -87,28 +100,22 @@ export async function POST(req: NextRequest) {
     // ── 5. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
-    // ── 6. Build internal links ────────────────────────────────────────────
-    // Internal links are built DETERMINISTICALLY from the article content and
-    // the uploaded sheet — not left to the AI, which used to paraphrase anchors
-    // or pick URLs that failed validation (the recurring "0/3 links" bug).
-    // buildInternalLinks reads the content, picks a sensible 2–3 word keyword
-    // phrase, and matches it to the most topically relevant sheet URL. Anchors
-    // are sliced verbatim from the content and URLs are exact sheet strings, so
-    // these always pass validation. We guarantee at least 3 where possible.
-    const deterministicLinks = buildInternalLinks(content, urls, primaryKeyword, 3, 3);
-
-    // The AI's own link suggestions act only as a backup to top up to 3 if the
-    // deterministic pass came up short. They are validated the same strict way.
+    // ── 6. Validate + assemble internal links (3–7, all page-verified) ─────
+    // The AI chose links using each page's REAL fetched title/description, so
+    // its picks lead. Every link must still pass the hard rules:
+    //   a) anchor exists verbatim in original article OR generated paragraphs
+    //   b) URL is one of the READ-AND-CONFIRMED relevant candidates — being in
+    //      the sheet is not enough, the page content must match the article
+    //   c) anchor is a sensible 2–4 word phrase
     const searchableContent = [
       content,
       parsed.paragraph1,
       parsed.paragraph2,
     ].join('\n').toLowerCase();
 
-    // Build lookup set from the original spreadsheet URLs for O(1) validation
-    const urlSet = new Set(urls);
-    const usedUrls = new Set(deterministicLinks.map((l) => l.url));
-    const usedAnchors = new Set(deterministicLinks.map((l) => l.anchorText.toLowerCase()));
+    const confirmedUrlSet = new Set(topCandidates.map((u) => u.url));
+    const usedUrls = new Set<string>();
+    const usedAnchors = new Set<string>();
 
     const validatedAILinks = parsed.internalLinks.filter((link) => {
       // Strip residual bold markers and quotes the AI sometimes adds
@@ -128,10 +135,10 @@ export async function POST(req: NextRequest) {
       // Rule (a): anchor must exist verbatim in article or generated paragraphs
       if (!searchableContent.includes(cleanAnchor.toLowerCase())) return false;
 
-      // Rule (b): URL must be an exact match in the spreadsheet database
-      if (!urlSet.has(link.url)) return false;
+      // Rule (b): URL must be a read-and-confirmed relevant page
+      if (!confirmedUrlSet.has(link.url)) return false;
 
-      // Skip anything the deterministic pass already covered (dedupe url + anchor)
+      // Dedupe — each URL and each anchor used at most once
       if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
       usedUrls.add(link.url);
       usedAnchors.add(cleanAnchor.toLowerCase());
@@ -139,8 +146,27 @@ export async function POST(req: NextRequest) {
       return true;
     });
 
-    // Deterministic links lead; AI links only fill remaining slots up to 3.
-    const validatedLinks = [...deterministicLinks, ...validatedAILinks].slice(0, 3);
+    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool, with
+    // anchors sliced verbatim from the article. When pages were actually read
+    // and verified we aim for 7 links; in slug-only fallback mode we stop at 3
+    // rather than pad with unverified matches.
+    let finalLinks = [...validatedAILinks];
+    const targetCount = usingPageData ? 7 : 3;
+    if (finalLinks.length < targetCount) {
+      const remaining = topCandidates
+        .map((u) => u.url)
+        .filter((u) => !usedUrls.has(u));
+      const extras = buildInternalLinks(
+        content,
+        remaining,
+        primaryKeyword,
+        targetCount - finalLinks.length,
+        targetCount - finalLinks.length
+      ).filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()));
+      finalLinks = [...finalLinks, ...extras];
+    }
+
+    const validatedLinks = finalLinks.slice(0, 7);
 
     const durationMs = Date.now() - startTime;
 

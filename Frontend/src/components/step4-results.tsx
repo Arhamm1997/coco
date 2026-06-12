@@ -154,7 +154,7 @@ function VerificationPanel({ results, keyword }: { results: SEOResult; keyword: 
     { label: 'Meta desc ≤145',       pass: results.metaDescription.length <= 145 },
     { label: 'P1 70–90 words',       pass: p1Words >= 70 && p1Words <= 90 },
     { label: 'P2 70–90 words',       pass: p2Words >= 70 && p2Words <= 90 },
-    { label: '3 links found',        pass: results.internalLinks.length === 3 },
+    { label: '3–7 links found',      pass: results.internalLinks.length >= 3 && results.internalLinks.length <= 7 },
     { label: 'No em dashes',         pass: !hasEmDash(allText) },
   ];
 
@@ -527,14 +527,14 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
             className="text-xs px-2 py-0.5 rounded"
             style={{
               background:
-                results.internalLinks.length === 3
+                results.internalLinks.length >= 3
                   ? 'rgba(0, 200, 150, 0.1)'
                   : 'rgba(255, 71, 87, 0.1)',
-              color: results.internalLinks.length === 3 ? '#00C896' : '#FF4757',
+              color: results.internalLinks.length >= 3 ? '#00C896' : '#FF4757',
               fontWeight: 500,
             }}
           >
-            {results.internalLinks.length}/3 found
+            {results.internalLinks.length}/7 found
           </span>
         </div>
 

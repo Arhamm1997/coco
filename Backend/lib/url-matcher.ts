@@ -415,6 +415,78 @@ export function buildInternalLinks(
   return links;
 }
 
+export interface PageRelevance {
+  score: number;          // overall topical-overlap score
+  strongMatches: number;  // article topics found in the page's title/description/headings
+  pkInPage: boolean;      // full primary keyword appears in the page's title/description
+}
+
+/**
+ * Score how relevant a FETCHED page actually is to the article — based on the
+ * page's real title, meta description, headings and body text, not its URL.
+ * A slug keyword proves nothing; this reads what the page is genuinely about.
+ *
+ * Signals (strong → weak):
+ *   • article topic word in page TITLE        +5
+ *   • article topic word in page DESCRIPTION  +3
+ *   • article topic word in page HEADINGS     +2
+ *   • article topic word only in body text    +1 (capped at 6 — body text on a
+ *     magazine page includes related-article widgets, so it's a weak signal)
+ *   • full primary keyword in title/desc     +12
+ */
+export function scorePageRelevance(
+  page: { title: string; description: string; headings: string[]; bodyText: string },
+  content: string,
+  primaryKeyword: string
+): PageRelevance {
+  const tokenize = (s: string) =>
+    new Set(
+      s
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 3 && !CONTENT_STOP.has(w) && /^[a-z]+$/.test(w))
+    );
+
+  const contentKw = new Set(extractContentKeywords(content));
+  const titleSet = tokenize(page.title);
+  const descSet = tokenize(page.description);
+  const headSet = tokenize(page.headings.join(' '));
+  const bodySet = tokenize(page.bodyText);
+
+  let score = 0;
+  let strongMatches = 0;
+  let bodyOnly = 0;
+
+  for (const w of contentKw) {
+    if (titleSet.has(w)) {
+      score += 5;
+      strongMatches++;
+    } else if (descSet.has(w)) {
+      score += 3;
+      strongMatches++;
+    } else if (headSet.has(w)) {
+      score += 2;
+      strongMatches++;
+    } else if (bodySet.has(w)) {
+      bodyOnly++;
+    }
+  }
+  score += Math.min(bodyOnly, 6);
+
+  const pageHeadText = `${page.title} ${page.description}`.toLowerCase();
+  const pkLower = primaryKeyword.toLowerCase().trim();
+  const pkInPage = pkLower.length > 0 && pageHeadText.includes(pkLower);
+  if (pkInPage) {
+    score += 12;
+  } else {
+    for (const w of pkLower.split(/\s+/)) {
+      if (w.length > 3 && pageHeadText.includes(w)) score += 3;
+    }
+  }
+
+  return { score, strongMatches, pkInPage };
+}
+
 /**
  * Exported for use in validation layers.
  * Checks whether at least one meaningful word from the anchor text

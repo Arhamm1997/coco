@@ -17,7 +17,10 @@ function slugToTitle(url: string): string {
 export function buildPrompt({ content, primaryKeyword, liveURLs }: BuildPromptArgs): string {
   const urlDatabase = liveURLs.map((u) => ({
     address: u.url,
-    title: slugToTitle(u.url),
+    // Real fetched <title> when available — far better relevance signal than
+    // a slug-derived guess.
+    title: u.pageTitle || slugToTitle(u.url),
+    ...(u.pageDescription ? { description: u.pageDescription } : {}),
     // suggested_anchor is pre-verified: it exists verbatim in the article content
     ...(u.anchorText ? { suggested_anchor: u.anchorText } : {}),
   }));
@@ -39,7 +42,7 @@ Your job is NOT to write a generic lifestyle blurb. It is to extend the writer's
 Your task is to generate a short, polished SEO content section for a given article. You will receive:
 1. PRIMARY KEYWORD
 2. FULL ARTICLE CONTENT
-3. URL DATABASE — a JSON array of houseofcoco.net URLs confirmed in the site's database, with "address" and "title" fields
+3. URL DATABASE — a JSON array of houseofcoco.net pages. Each entry has "address", plus "title" and "description" FETCHED FROM THE LIVE PAGE — these tell you what the page is genuinely about. Judge link relevance by the title/description, never by keywords in the URL.
 
 ════════════════════════════════════════
 OUTPUT FORMAT — wrap every field in XML tags, exactly in this order:
@@ -61,6 +64,7 @@ OUTPUT FORMAT — wrap every field in XML tags, exactly in this order:
 anchor text 1 | URL 1 | FOUND
 anchor text 2 | URL 2 | FOUND
 anchor text 3 | URL 3 | FOUND
+[... up to 7 lines — give as many GENUINELY relevant links as the database supports, minimum 3, maximum 7. Never pad with weak matches.]
 </links>
 
 <placement>Insert this section immediately before [first 8–10 words of the article's final paragraph].</placement>
@@ -122,26 +126,35 @@ suggestions are valid backups.
    RIGHT: suggested_anchor says "aesthetic suppliers" → you write: aesthetic suppliers ← PASSES
    RIGHT: Your paragraph1 says "clinic operations easier" → you write: clinic operations ← PASSES
 
-3. Anchor text must be 2–4 words only.
+3. Anchor text must be 2–4 words only, and it must READ NATURALLY as a meaningful phrase —
+   a noun phrase a human editor would link (e.g. "geothermal spa pools", "boutique hotel in Lisbon").
+   Never a clipped fragment ("pools steam", "and luxury"), never a verb scrap, never generic filler
+   ("click here", "this article").
 
-4. DIRECT TOPIC RELEVANCE — the linked URL must be about the same specific subject as the anchor text.
-   Ask yourself: "If a reader clicks this link, will they find content directly related to what they just read?"
-   — If the article is about a hotel in Phoenix → link to hotels, travel, or destinations. NOT home decor.
-   — If the article is about spa treatments → link to wellness, spa, or retreat articles. NOT fashion.
-   — Sharing one word like "luxury" or "design" is NOT enough. The whole topic must match.
+4. DIRECT TOPIC RELEVANCE — judged from the page's REAL "title" and "description" fields
+   (these were fetched from the live page; they are the truth about what the page covers).
+   A keyword appearing in the URL address is NOT evidence of relevance — ignore URL wording.
+   Ask yourself: "Based on this page's title and description, will a reader who clicks find
+   content directly related to what they just read?"
+   — If the article is about a hotel in Phoenix → link to pages whose TITLE/DESCRIPTION are about hotels, travel, destinations. NOT home decor.
+   — If the article is about spa treatments → link to pages whose TITLE/DESCRIPTION are about wellness, spas, retreats. NOT fashion.
+   — Sharing one word like "luxury" or "design" is NOT enough. The page's whole topic must match.
 
-5. All 3 links must be FOUND — "address" value copied exactly from the URL database, anchor verbatim in content, no quotes in output.
-6. All 3 URLs must be from houseofcoco.net only.
-7. Do NOT use unrelated links just to fill the count. Fewer relevant links beat 3 irrelevant ones.
+5. Provide 3 to 7 links. Give as many as are GENUINELY relevant — if the database supports 7
+   strong matches, give 7. If only 4 are truly relevant, give 4. Quality over count, always.
+6. Every link line must be FOUND — "address" value copied exactly from the URL database, anchor verbatim in content, no quotes in output.
+7. All URLs must be from houseofcoco.net only.
+8. Do NOT use unrelated links just to fill the count. Fewer relevant links beat padded irrelevant ones.
 
 ════════════════════════════════════════
 HOW TO SEARCH THE URL DATABASE
 ════════════════════════════════════════
 Step 1 — Identify the article's MAIN TOPIC (e.g., "gaming hotel", "spa in Iceland", "fashion week Paris")
-Step 2 — Generate 15–25 search terms from that topic: synonyms, subtopics, locations, adjacent categories
-Step 3 — Filter the URL database: search_term.lower() in record["address"].lower() OR in record["title"].lower()
-Step 4 — From matching URLs, pick those whose FULL TOPIC matches the article content — not just a single shared keyword
-Step 5 — Confirm each chosen URL is an exact string match in the database "address" field
+Step 2 — Read every database entry's "title" and "description" — they describe the LIVE page's actual content
+Step 3 — Shortlist entries whose title/description covers the same subject as the article (synonyms and subtopics count; URL wording does not)
+Step 4 — From the shortlist, keep those whose FULL TOPIC matches the article — not just a single shared word
+Step 5 — Rank by relevance and output the top 3–7, each with a natural verbatim anchor
+Step 6 — Confirm each chosen URL is an exact string match in the database "address" field
 
 ════════════════════════════════════════
 WRITING STYLE RULES
@@ -163,9 +176,11 @@ PRE-OUTPUT CHECKLIST (run silently before responding)
 [ ] Paragraph 2 is 70–90 words (counted)
 [ ] Meta title ≤55 chars, standalone and sensible (NO "| House of Coco" or any brand/site name appended)
 [ ] Meta description 130–145 chars, primary keyword in the first half, complete sentence (not cut off)
+[ ] 3–7 links given — every one genuinely relevant, none added just to fill the count
 [ ] Each anchor text exists verbatim in the article content (tested with .lower() check)
+[ ] Each anchor reads naturally as a meaningful phrase — no clipped fragments
 [ ] Each URL is an exact match in the database "address" field
-[ ] Each URL is DIRECTLY topically relevant to its anchor text — not just sharing a word
+[ ] Each link judged relevant from the page's REAL title/description — not from URL keywords
 [ ] No em dashes anywhere
 [ ] Placement note cites actual opening words of the article's final paragraph
 

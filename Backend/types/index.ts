@@ -45,6 +45,8 @@ export interface MatchedURL {
   keywords: string[];        // extracted from slug
   anchorText: string | null; // phrase found in content
   relevanceScore: number;
+  pageTitle?: string;        // real <title> fetched from the live page
+  pageDescription?: string;  // real meta description fetched from the live page
 }
 
 export interface AICallResult {
