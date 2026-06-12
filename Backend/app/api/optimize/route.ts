@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { batchCheckURLs } from '@/lib/url-checker';
-import { findBestMatchingURLs, findBestMatchingURLsRelaxed, anchorIsRelevantToURL } from '@/lib/url-matcher';
+import { findBestMatchingURLs, findBestMatchingURLsRelaxed, buildInternalLinks } from '@/lib/url-matcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
 import { validateOptimizeRequest } from '@/lib/validators';
@@ -43,68 +42,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── 2. Search the COMPLETE uploaded URL sheet for top candidates ────────
-    // Strict search: requires pre-confirmed anchor text in content + relevance
+    // ── 2. Find the most relevant URLs from the spreadsheet ────────────────
+    // The spreadsheet is the authority — no HTTP liveness check needed.
+    // Strict search first: requires pre-confirmed anchor text in content + relevance.
     let candidateURLs = findBestMatchingURLs(content, urls, primaryKeyword, 50);
 
-    // Fallback: if < 3 strict matches from the full sheet, relax anchor requirement
-    // Claude will find the anchor text itself from the article
+    // Relaxed fallback: relevance score only — no pre-confirmed anchor required.
     if (candidateURLs.length < 3) {
       candidateURLs = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 50);
     }
 
-    // ── 3. HEAD-check the top candidates for liveness ──────────────────────
-    const urlCheckResults = await batchCheckURLs(
-      candidateURLs.map((u) => u.url),
-      { timeout: 5000, maxConcurrent: 10, retries: 1 }
-    );
-
-    const liveSet = new Set(
-      urlCheckResults.filter((r) => r.isLive).map((r) => r.url)
-    );
-
-    let liveURLs = candidateURLs.filter((u) => liveSet.has(u.url));
-
-    // ── 4. Second fallback: HEAD-check ALL remaining unchecked URLs ─────────
-    if (liveURLs.length < 3) {
-      const alreadyChecked = new Set(candidateURLs.map((u) => u.url));
-      // Use every remaining URL from the full sheet — no artificial slice limit
-      const remaining = urls.filter((u) => !alreadyChecked.has(u));
-
-      if (remaining.length > 0) {
-        const extraCandidates = findBestMatchingURLsRelaxed(
-          content,
-          remaining,
-          primaryKeyword,
-          50
-        );
-        const extraChecks = await batchCheckURLs(
-          extraCandidates.map((u) => u.url),
-          { timeout: 5000, maxConcurrent: 10, retries: 1 }
-        );
-        const extraLiveSet = new Set(
-          extraChecks.filter((r) => r.isLive).map((r) => r.url)
-        );
-        const extraLive = extraCandidates.filter((u) => extraLiveSet.has(u.url));
-        liveURLs = [...liveURLs, ...extraLive];
-      }
+    // Final fallback: if still under 10 candidates, pad with more relaxed matches
+    // from the remaining pool so the AI always has enough URLs to choose from.
+    if (candidateURLs.length < 10) {
+      const seen = new Set(candidateURLs.map((u) => u.url));
+      const extras = findBestMatchingURLsRelaxed(
+        content,
+        urls.filter((u) => !seen.has(u)),
+        primaryKeyword,
+        50
+      );
+      candidateURLs = [...candidateURLs, ...extras].slice(0, 50);
     }
 
-    // Last resort: use top candidates even without confirmed liveness
-    if (liveURLs.length === 0) {
-      liveURLs = candidateURLs.slice(0, 25);
-    }
+    const topCandidates = candidateURLs.slice(0, 25);
+    const liveUrlCount = topCandidates.length;
 
-    const liveUrlCount = liveURLs.length;
-
-    // ── 5. Build the AI prompt — pass top 25 live URLs ─────────────────────
+    // ── 3. Build the AI prompt — pass top 25 candidates ───────────────────
     const prompt = buildPrompt({
       content,
       primaryKeyword,
-      liveURLs: liveURLs.slice(0, 25),
+      liveURLs: topCandidates,
     });
 
-    // ── 6. Call the selected AI provider ──────────────────────────────────
+    // ── 4. Call the selected AI provider ──────────────────────────────────
     const aiResponse = await callAIProvider({
       provider,
       apiKey,
@@ -113,32 +84,67 @@ export async function POST(req: NextRequest) {
       model,
     });
 
-    // ── 7. Parse the structured AI response ───────────────────────────────
+    // ── 5. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
-    // ── 8. Validate links ──────────────────────────────────────────────────────
-    // The SEO section (paragraph1 + paragraph2) will be INSERTED into the article,
-    // so anchor text from either the original article OR the generated paragraphs is valid.
-    // Also strip residual quotes/bold markers that Claude sometimes adds.
+    // ── 6. Build internal links ────────────────────────────────────────────
+    // Internal links are built DETERMINISTICALLY from the article content and
+    // the uploaded sheet — not left to the AI, which used to paraphrase anchors
+    // or pick URLs that failed validation (the recurring "0/3 links" bug).
+    // buildInternalLinks reads the content, picks a sensible 2–3 word keyword
+    // phrase, and matches it to the most topically relevant sheet URL. Anchors
+    // are sliced verbatim from the content and URLs are exact sheet strings, so
+    // these always pass validation. We guarantee at least 3 where possible.
+    const deterministicLinks = buildInternalLinks(content, urls, primaryKeyword, 3, 3);
+
+    // The AI's own link suggestions act only as a backup to top up to 3 if the
+    // deterministic pass came up short. They are validated the same strict way.
     const searchableContent = [
       content,
       parsed.paragraph1,
       parsed.paragraph2,
     ].join('\n').toLowerCase();
 
-    const validatedLinks = parsed.internalLinks.filter((link) => {
+    // Build lookup set from the original spreadsheet URLs for O(1) validation
+    const urlSet = new Set(urls);
+    const usedUrls = new Set(deterministicLinks.map((l) => l.url));
+    const usedAnchors = new Set(deterministicLinks.map((l) => l.anchorText.toLowerCase()));
+
+    const validatedAILinks = parsed.internalLinks.filter((link) => {
+      // Strip residual bold markers and quotes the AI sometimes adds
       const cleanAnchor = link.anchorText
-        .replace(/\*\*/g, '')               // strip bold markdown **
-        .replace(/^[""''«»"'`]+/, '')       // strip leading quotes
-        .replace(/[""''«»"'`]+$/, '')       // strip trailing quotes
+        .replace(/\*\*/g, '')
+        .replace(/^[""''«»"'`]+/, '')
+        .replace(/[""''«»"'`]+$/, '')
         .trim();
       link.anchorText = cleanAnchor;
-      return cleanAnchor.length >= 2 && searchableContent.includes(cleanAnchor.toLowerCase());
+
+      if (cleanAnchor.length < 2) return false;
+
+      // Rule (c): 2–4 words
+      const wordCount = cleanAnchor.split(/\s+/).filter(Boolean).length;
+      if (wordCount < 2 || wordCount > 4) return false;
+
+      // Rule (a): anchor must exist verbatim in article or generated paragraphs
+      if (!searchableContent.includes(cleanAnchor.toLowerCase())) return false;
+
+      // Rule (b): URL must be an exact match in the spreadsheet database
+      if (!urlSet.has(link.url)) return false;
+
+      // Skip anything the deterministic pass already covered (dedupe url + anchor)
+      if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
+      usedUrls.add(link.url);
+      usedAnchors.add(cleanAnchor.toLowerCase());
+
+      return true;
     });
+
+    // Deterministic links lead; AI links only fill remaining slots up to 3.
+    const validatedLinks = [...deterministicLinks, ...validatedAILinks].slice(0, 3);
 
     const durationMs = Date.now() - startTime;
 
-    // ── 9. Persist the generation result to MongoDB ────────────────────────
+    // ── 7. Persist the generation result to MongoDB ────────────────────────
     try {
       await connectDB();
       await GenerationResult.create({
@@ -162,7 +168,7 @@ export async function POST(req: NextRequest) {
       console.error('[/api/optimize] MongoDB write failed:', dbErr);
     }
 
-    // ── 10. Return success response ────────────────────────────────────────
+    // ── 8. Return success response ─────────────────────────────────────────
     const response: OptimizeResponse = {
       success: true,
       data: {
