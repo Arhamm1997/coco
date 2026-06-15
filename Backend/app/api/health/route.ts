@@ -1,33 +1,34 @@
 import { NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db/connection';
 import mongoose from 'mongoose';
 
+// Liveness must reflect whether the API process can answer — NOT whether
+// MongoDB happens to be connected. The optimizer works without the DB (writes
+// are best-effort/non-fatal), so a slow or dropped Mongo connection must never
+// make the whole service read as "offline".
+//
+// Two deliberate choices fix the false "Backend offline" flips:
+//   1. Do NOT await connectDB() here. Server selection can block up to
+//      serverSelectionTimeoutMS (5s), which exceeds the client's 4s health
+//      timeout and would falsely report offline. We only read the current
+//      connection state, which is instant.
+//   2. Always return 200 when the process responds. DB status is reported in
+//      the body as informational only.
+const READY_STATES: Record<number, string> = {
+  0: 'disconnected',
+  1: 'connected',
+  2: 'connecting',
+  3: 'disconnecting',
+  99: 'uninitialized',
+};
+
 export async function GET() {
-  let dbStatus: 'connected' | 'disconnected' | 'error' = 'disconnected';
-  let dbError: string | undefined;
+  const dbStatus = READY_STATES[mongoose.connection.readyState] ?? 'unknown';
 
-  try {
-    await connectDB();
-    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
-    dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  } catch (err: unknown) {
-    dbStatus = 'error';
-    dbError = err instanceof Error ? err.message : 'Unknown DB error';
-  }
-
-  const healthy = dbStatus === 'connected';
-
-  return NextResponse.json(
-    {
-      status:    healthy ? 'ok' : 'degraded',
-      service:   'SEO Content Optimizer API',
-      version:   '1.0.0',
-      timestamp: new Date().toISOString(),
-      database:  {
-        status: dbStatus,
-        ...(dbError ? { error: dbError } : {}),
-      },
-    },
-    { status: healthy ? 200 : 503 }
-  );
+  return NextResponse.json({
+    status:    'ok',
+    service:   'SEO Content Optimizer API',
+    version:   '1.0.0',
+    timestamp: new Date().toISOString(),
+    database:  { status: dbStatus },
+  });
 }
