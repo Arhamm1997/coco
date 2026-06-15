@@ -1,13 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { batchCheckURLs } from '@/lib/url-checker';
-import { findBestMatchingURLs, findBestMatchingURLsRelaxed, anchorIsRelevantToURL } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance } from '@/lib/url-matcher';
+import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
 import { validateOptimizeRequest } from '@/lib/validators';
 import { connectDB } from '@/lib/db/connection';
 import { GenerationResult } from '@/lib/db/models/GenerationResult';
+
+// ── Placement helpers ──────────────────────────────────────────────────────
+// The AI must quote the opening words of a real paragraph so the editor can
+// Ctrl+F the spot. If the quote can't be found verbatim in the article, the
+// note is useless — replace it with a deterministic, always-sensible fallback.
+
+function normalizeForSearch(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fallbackPlacement(content: string): string {
+  const paras = content
+    .split(/\r?\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  // Prefer the last real paragraph (6+ words) over trailing one-liners/CTAs.
+  const lastReal =
+    [...paras].reverse().find((p) => p.split(/\s+/).length >= 6) ||
+    paras[paras.length - 1] ||
+    '';
+  const opening = lastReal.split(/\s+/).slice(0, 10).join(' ');
+  return `Insert this section immediately before the paragraph that begins: "${opening}". WHY: placing it just before the article's closing paragraph keeps the writer's flow intact — the section reads as a natural lead-in to the conclusion.`;
+}
+
+function ensureSensiblePlacement(aiPlacement: string, content: string): string {
+  const quoted = aiPlacement.match(/["“”]([^"“”]{10,200})["“”]/);
+  if (quoted && normalizeForSearch(content).includes(normalizeForSearch(quoted[1]))) {
+    return aiPlacement;
+  }
+  return fallbackPlacement(content);
+}
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
@@ -43,68 +79,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── 2. Search the COMPLETE uploaded URL sheet for top candidates ────────
-    // Strict search: requires pre-confirmed anchor text in content + relevance
-    let candidateURLs = findBestMatchingURLs(content, urls, primaryKeyword, 50);
+    // ── 2. Pre-filter by slug, then READ each candidate page ──────────────
+    // A keyword in the URL slug is NOT evidence of relevance — the page must
+    // actually be about the article's topic. So:
+    //   a) narrow the sheet to the top slug-relevant candidates (cheap filter),
+    //   b) fetch each candidate and read its REAL title/description/headings/body,
+    //   c) keep only pages whose actual content overlaps this article.
+    const slugCandidates = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 40);
 
-    // Fallback: if < 3 strict matches from the full sheet, relax anchor requirement
-    // Claude will find the anchor text itself from the article
-    if (candidateURLs.length < 3) {
-      candidateURLs = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 50);
-    }
+    const summaries = await fetchPageSummaries(slugCandidates.map((c) => c.url), 10);
 
-    // ── 3. HEAD-check the top candidates for liveness ──────────────────────
-    const urlCheckResults = await batchCheckURLs(
-      candidateURLs.map((u) => u.url),
-      { timeout: 5000, maxConcurrent: 10, retries: 1 }
-    );
+    const enriched = slugCandidates.map((c) => {
+      const page = summaries.get(c.url) ?? null;
+      const rel = page ? scorePageRelevance(page, content, primaryKeyword) : null;
+      return {
+        ...c,
+        pageTitle: page?.title || '',
+        pageDescription: page?.description || '',
+        pageScore: rel?.score ?? 0,
+        strongMatches: rel?.strongMatches ?? 0,
+        pkInPage: rel?.pkInPage ?? false,
+        wasRead: page !== null,
+      };
+    });
 
-    const liveSet = new Set(
-      urlCheckResults.filter((r) => r.isLive).map((r) => r.url)
-    );
+    // Confirmed relevant = we READ the page and its real content matches:
+    // either the primary keyword appears in its title/description, or at
+    // least 2 of the article's topics appear in title/description/headings
+    // AND the overall overlap score clears the bar.
+    const confirmed = enriched
+      .filter((e) => e.wasRead && (e.pkInPage || e.strongMatches >= 2) && e.pageScore >= 12)
+      .sort((a, b) => b.pageScore - a.pageScore);
 
-    let liveURLs = candidateURLs.filter((u) => liveSet.has(u.url));
+    // Fallback when the site can't be read (offline/blocked): slug order, so
+    // the feature degrades instead of dying. Page-verified mode needs ≥3 hits.
+    const usingPageData = confirmed.length >= 3;
+    const topCandidates = (usingPageData ? confirmed : enriched).slice(0, 25);
+    const liveUrlCount = topCandidates.length;
 
-    // ── 4. Second fallback: HEAD-check ALL remaining unchecked URLs ─────────
-    if (liveURLs.length < 3) {
-      const alreadyChecked = new Set(candidateURLs.map((u) => u.url));
-      // Use every remaining URL from the full sheet — no artificial slice limit
-      const remaining = urls.filter((u) => !alreadyChecked.has(u));
-
-      if (remaining.length > 0) {
-        const extraCandidates = findBestMatchingURLsRelaxed(
-          content,
-          remaining,
-          primaryKeyword,
-          50
-        );
-        const extraChecks = await batchCheckURLs(
-          extraCandidates.map((u) => u.url),
-          { timeout: 5000, maxConcurrent: 10, retries: 1 }
-        );
-        const extraLiveSet = new Set(
-          extraChecks.filter((r) => r.isLive).map((r) => r.url)
-        );
-        const extraLive = extraCandidates.filter((u) => extraLiveSet.has(u.url));
-        liveURLs = [...liveURLs, ...extraLive];
-      }
-    }
-
-    // Last resort: use top candidates even without confirmed liveness
-    if (liveURLs.length === 0) {
-      liveURLs = candidateURLs.slice(0, 25);
-    }
-
-    const liveUrlCount = liveURLs.length;
-
-    // ── 5. Build the AI prompt — pass top 25 live URLs ─────────────────────
+    // ── 3. Build the AI prompt — pass top 25 candidates ───────────────────
     const prompt = buildPrompt({
       content,
       primaryKeyword,
-      liveURLs: liveURLs.slice(0, 25),
+      liveURLs: topCandidates,
     });
 
-    // ── 6. Call the selected AI provider ──────────────────────────────────
+    // ── 4. Call the selected AI provider ──────────────────────────────────
     const aiResponse = await callAIProvider({
       provider,
       apiKey,
@@ -113,32 +133,87 @@ export async function POST(req: NextRequest) {
       model,
     });
 
-    // ── 7. Parse the structured AI response ───────────────────────────────
+    // ── 5. Parse the structured AI response ───────────────────────────────
     const parsed = parseAIResponse(aiResponse.text, content);
 
-    // ── 8. Validate links ──────────────────────────────────────────────────────
-    // The SEO section (paragraph1 + paragraph2) will be INSERTED into the article,
-    // so anchor text from either the original article OR the generated paragraphs is valid.
-    // Also strip residual quotes/bold markers that Claude sometimes adds.
+    // Placement must point at a findable, sensible spot — validate the AI's
+    // quoted paragraph opening against the article, else use the fallback.
+    const placementRecommendation = ensureSensiblePlacement(
+      parsed.placementRecommendation,
+      content
+    );
+
+    // ── 6. Validate + assemble internal links (3–7, all page-verified) ─────
+    // The AI chose links using each page's REAL fetched title/description, so
+    // its picks lead. Every link must still pass the hard rules:
+    //   a) anchor exists verbatim in original article OR generated paragraphs
+    //   b) URL is one of the READ-AND-CONFIRMED relevant candidates — being in
+    //      the sheet is not enough, the page content must match the article
+    //   c) anchor is a sensible 2–4 word phrase
     const searchableContent = [
       content,
       parsed.paragraph1,
       parsed.paragraph2,
     ].join('\n').toLowerCase();
 
-    const validatedLinks = parsed.internalLinks.filter((link) => {
+    const confirmedUrlSet = new Set(topCandidates.map((u) => u.url));
+    const usedUrls = new Set<string>();
+    const usedAnchors = new Set<string>();
+
+    const validatedAILinks = parsed.internalLinks.filter((link) => {
+      // Strip residual bold markers and quotes the AI sometimes adds
       const cleanAnchor = link.anchorText
-        .replace(/\*\*/g, '')               // strip bold markdown **
-        .replace(/^[""''«»"'`]+/, '')       // strip leading quotes
-        .replace(/[""''«»"'`]+$/, '')       // strip trailing quotes
+        .replace(/\*\*/g, '')
+        .replace(/^[""''«»"'`]+/, '')
+        .replace(/[""''«»"'`]+$/, '')
         .trim();
       link.anchorText = cleanAnchor;
-      return cleanAnchor.length >= 2 && searchableContent.includes(cleanAnchor.toLowerCase());
+
+      if (cleanAnchor.length < 2) return false;
+
+      // Rule (c): 2–4 words
+      const wordCount = cleanAnchor.split(/\s+/).filter(Boolean).length;
+      if (wordCount < 2 || wordCount > 4) return false;
+
+      // Rule (a): anchor must exist verbatim in article or generated paragraphs
+      if (!searchableContent.includes(cleanAnchor.toLowerCase())) return false;
+
+      // Rule (b): URL must be a read-and-confirmed relevant page
+      if (!confirmedUrlSet.has(link.url)) return false;
+
+      // Dedupe — each URL and each anchor used at most once
+      if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
+      usedUrls.add(link.url);
+      usedAnchors.add(cleanAnchor.toLowerCase());
+
+      return true;
     });
+
+    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool, with
+    // anchors sliced verbatim from the article. When pages were actually read
+    // and verified we aim for 7 links; in slug-only fallback mode we stop at 3
+    // rather than pad with unverified matches.
+    let finalLinks = [...validatedAILinks];
+    const targetCount = usingPageData ? 7 : 3;
+    if (finalLinks.length < targetCount) {
+      const remaining = topCandidates
+        .map((u) => u.url)
+        .filter((u) => !usedUrls.has(u));
+      const extras = buildInternalLinks(
+        content,
+        remaining,
+        primaryKeyword,
+        targetCount - finalLinks.length,
+        targetCount - finalLinks.length
+      ).filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()));
+      finalLinks = [...finalLinks, ...extras];
+    }
+
+    const validatedLinks = finalLinks.slice(0, 7);
 
     const durationMs = Date.now() - startTime;
 
-    // ── 9. Persist the generation result to MongoDB ────────────────────────
+    // ── 7. Persist the generation result to MongoDB ────────────────────────
     try {
       await connectDB();
       await GenerationResult.create({
@@ -154,7 +229,7 @@ export async function POST(req: NextRequest) {
         metaTitle:               parsed.metaTitle,
         metaDescription:         parsed.metaDescription,
         internalLinks:           validatedLinks,
-        placementRecommendation: parsed.placementRecommendation,
+        placementRecommendation,
         tokensUsed:              aiResponse.tokensUsed,
         durationMs,
       });
@@ -162,7 +237,7 @@ export async function POST(req: NextRequest) {
       console.error('[/api/optimize] MongoDB write failed:', dbErr);
     }
 
-    // ── 10. Return success response ────────────────────────────────────────
+    // ── 8. Return success response ─────────────────────────────────────────
     const response: OptimizeResponse = {
       success: true,
       data: {
@@ -173,7 +248,7 @@ export async function POST(req: NextRequest) {
         metaTitle:               parsed.metaTitle,
         metaDescription:         parsed.metaDescription,
         internalLinks:           validatedLinks,
-        placementRecommendation: parsed.placementRecommendation,
+        placementRecommendation,
         provider,
         tokensUsed:              aiResponse.tokensUsed,
       },

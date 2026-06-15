@@ -1,4 +1,4 @@
-import { MatchedURL } from '@/types';
+import { MatchedURL, InternalLink } from '@/types';
 
 // Stop-words for URL slug parsing
 const STOP_WORDS = new Set([
@@ -143,43 +143,47 @@ function findAnchorText(url: string, content: string): string | null {
     }
   }
 
-  // Strategy 2: single meaningful slug keyword → build 2–3 word phrase from content
-  // Only use keywords that are MEANINGFUL (length ≥ 5, not a stop-word)
-  for (const keyword of slugWords) {
-    if (keyword.length < 5 || STOP_WORDS.has(keyword) || CONTENT_STOP.has(keyword)) continue;
+  // Strategy 2: token-based — find a 2–4 word phrase in the article that contains
+  // a meaningful slug keyword. Uses word-only tokens so punctuation is excluded
+  // from the extracted phrase (e.g. "luxury spa, retreat" → "luxury spa").
+  const meaningfulSlugs = slugWords.filter(
+    (w) => w.length >= 4 && !STOP_WORDS.has(w) && !CONTENT_STOP.has(w)
+  );
 
-    // Find whole-word occurrence in content
-    let searchFrom = 0;
-    let idx = -1;
-    while (searchFrom < contentLower.length) {
-      const found = contentLower.indexOf(keyword, searchFrom);
-      if (found === -1) break;
-      if (isWholeWord(contentLower, found, keyword)) { idx = found; break; }
-      searchFrom = found + 1;
-    }
-    if (idx === -1) continue;
+  // Tokenize content into pure-letter tokens with their positions
+  const TOKEN_RX = /[a-zA-Z]+(?:[''][a-zA-Z]+)*/g;
+  const allTokens: Array<{ text: string; start: number; end: number }> = [];
+  let tok: RegExpExecArray | null;
+  while ((tok = TOKEN_RX.exec(content)) !== null) {
+    allTokens.push({ text: tok[0], start: tok.index, end: tok.index + tok[0].length });
+  }
 
-    const kwEnd = idx + keyword.length;
-    const beforeSpace = contentLower.lastIndexOf(' ', idx - 1);
-    const afterSpace  = contentLower.indexOf(' ', kwEnd);
-    const afterSpace2 = afterSpace !== -1 ? contentLower.indexOf(' ', afterSpace + 1) : -1;
+  for (const slugKw of meaningfulSlugs) {
+    for (let ti = 0; ti < allTokens.length; ti++) {
+      if (allTokens[ti].text.toLowerCase() !== slugKw) continue;
 
-    // Try 3-word: prev + keyword + next
-    if (beforeSpace !== -1 && afterSpace !== -1 && idx - beforeSpace > 1) {
-      const three = content.substring(beforeSpace + 1, afterSpace);
-      if (three.split(' ').length === 3 && hasMeaningfulWord(three)) return three;
-    }
+      // Try window sizes 2, 3, 4 centred around the matching token
+      for (let windowSize = 2; windowSize <= 4; windowSize++) {
+        for (let start = Math.max(0, ti - windowSize + 1); start <= ti; start++) {
+          const end = start + windowSize;
+          if (end > allTokens.length) continue;
 
-    // Try 2-word: keyword + next word
-    if (afterSpace !== -1 && afterSpace2 !== -1) {
-      const two = content.substring(idx, afterSpace2);
-      if (two.split(' ').length === 2 && hasMeaningfulWord(two)) return two;
-    }
+          const phraseStart = allTokens[start].start;
+          const phraseEnd   = allTokens[end - 1].end;
+          const phrase      = content.substring(phraseStart, phraseEnd);
 
-    // Try 2-word: prev word + keyword
-    if (beforeSpace !== -1 && idx - beforeSpace > 1) {
-      const two = content.substring(beforeSpace + 1, kwEnd);
-      if (two.split(' ').length === 2 && hasMeaningfulWord(two)) return two;
+          // Reject if the extracted substring contains punctuation (comma, period, etc.)
+          if (/[^a-zA-Z '‘’-]/.test(phrase)) continue;
+          if (!hasMeaningfulWord(phrase)) continue;
+
+          // Verify it exists verbatim in content with whole-word boundaries
+          const phraseLower = phrase.toLowerCase();
+          const idx = contentLower.indexOf(phraseLower);
+          if (idx !== -1 && isWholeWord(contentLower, idx, phraseLower)) {
+            return phrase;
+          }
+        }
+      }
     }
   }
 
@@ -233,6 +237,254 @@ export function findBestMatchingURLsRelaxed(
     .filter((u) => u.relevanceScore > 0)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
     .slice(0, topN);
+}
+
+/**
+ * Find the SINGLE BEST 2–3 word anchor phrase in the content for a given URL.
+ *
+ * Unlike findAnchorText (which returns the first acceptable phrase), this scans
+ * the WHOLE article and returns the phrase most strongly tied to the URL's
+ * topic — i.e. the phrase whose words overlap the URL slug the most, with a
+ * bonus when it also contains the primary keyword. The phrase is guaranteed to
+ * exist verbatim in the content (it is sliced straight out of it), so it always
+ * passes the downstream verbatim check.
+ *
+ * @param relaxed  When true, widens the window to 4 words and counts partial
+ *                 (prefix) slug matches — used only as a fallback to reach the
+ *                 minimum link count.
+ * @returns { anchor, anchorScore } or null when no slug-tied phrase exists.
+ */
+function findBestAnchor(
+  url: string,
+  content: string,
+  primaryKeyword: string,
+  relaxed = false
+): { anchor: string; anchorScore: number } | null {
+  let pathname = '';
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+
+  // Only MEANINGFUL slug words count as topical hits — stop-words in the slug
+  // (e.g. "around-the-world" → "the", "around") must not inflate the score or
+  // we end up picking anchors like "The geothermal pools" over "geothermal pools".
+  const slugWords = pathname
+    .replace(/^\/|\/$/g, '')
+    .split(/[-\/]/)
+    .map((w) => w.toLowerCase())
+    .filter((w) => w.length > 2 && /^[a-z]+$/.test(w) && !STOP_WORDS.has(w) && !CONTENT_STOP.has(w));
+
+  const slugSet = new Set(slugWords);
+  if (slugSet.size === 0) return null;
+
+  const pkWords = new Set(
+    primaryKeyword.toLowerCase().split(/\s+/).filter((w) => w.length > 2)
+  );
+
+  // Tokenize content into pure-letter tokens with their character positions.
+  const TOKEN_RX = /[a-zA-Z]+(?:[''][a-zA-Z]+)*/g;
+  const tokens: Array<{ text: string; start: number; end: number }> = [];
+  let tok: RegExpExecArray | null;
+  while ((tok = TOKEN_RX.exec(content)) !== null) {
+    tokens.push({ text: tok[0], start: tok.index, end: tok.index + tok[0].length });
+  }
+
+  const maxLen = relaxed ? 4 : 3;
+  let best: { anchor: string; anchorScore: number } | null = null;
+
+  for (let i = 0; i < tokens.length; i++) {
+    for (let len = 2; len <= maxLen; len++) {
+      const end = i + len;
+      if (end > tokens.length) break;
+
+      const phrase = content.substring(tokens[i].start, tokens[end - 1].end);
+
+      // Reject phrases that span punctuation (comma, period, etc.) — keep only
+      // letters, spaces, apostrophes and hyphens so the anchor reads naturally.
+      if (/[^a-zA-Z '‘’\-]/.test(phrase)) continue;
+      if (!hasMeaningfulWord(phrase)) continue;
+
+      const words = phrase.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
+
+      // Anchors must not begin or end with a stop-word — keeps them clean
+      // ("geothermal pools", not "the geothermal" or "spa in").
+      const isStop = (w: string) => STOP_WORDS.has(w) || CONTENT_STOP.has(w);
+      if (isStop(words[0]) || isStop(words[words.length - 1])) continue;
+
+      let slugHits = 0;
+      let pkHits = 0;
+      for (const w of words) {
+        if (slugSet.has(w)) slugHits++;
+        else if (relaxed && w.length > 4 && [...slugSet].some((s) => s.length > 4 && (w.startsWith(s) || s.startsWith(w)))) {
+          slugHits++;
+        }
+        if (pkWords.has(w)) pkHits++;
+      }
+
+      // The anchor MUST tie back to the URL topic — at least one slug word.
+      if (slugHits === 0) continue;
+
+      // Prefer the most slug coverage (topical tie), then primary-keyword
+      // presence, then the most CONCISE phrase — so we get "geothermal pools",
+      // not "geothermal pools steam" padded with an unrelated word.
+      const score = slugHits * 100 + pkHits * 10 - len * 3;
+      if (!best || score > best.anchorScore) {
+        best = { anchor: phrase.trim(), anchorScore: score };
+      }
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Deterministically build internal links from the article content and the
+ * uploaded URL sheet — NO AI involved, so the result is always valid:
+ *   • every anchor exists verbatim in the content (sliced out of it)
+ *   • every URL is an exact string from the sheet
+ *   • anchors and URLs are distinct across the link set
+ *
+ * For each URL we score topical relevance (slug ↔ content overlap + primary
+ * keyword signal) and find the best content phrase tied to that URL, then
+ * greedily pick the strongest matches. A relaxed second pass runs only if the
+ * strict pass cannot reach `minLinks`, so we honour "at least 3 links" while
+ * still leading with the most relevant matches.
+ */
+export function buildInternalLinks(
+  content: string,
+  urls: string[],
+  primaryKeyword: string,
+  minLinks = 3,
+  maxLinks = 3
+): InternalLink[] {
+  const contentKeywords = extractContentKeywords(content);
+
+  const collect = (relaxed: boolean, excludeUrls: Set<string>, excludeAnchors: Set<string>) => {
+    const seenUrls = new Set<string>();
+    const out: Array<{ url: string; anchorText: string; relevanceScore: number; anchorScore: number }> = [];
+
+    for (const url of urls) {
+      if (seenUrls.has(url) || excludeUrls.has(url)) continue;
+      seenUrls.add(url);
+
+      const slugKeywords = extractSlugKeywords(url);
+      if (slugKeywords.length === 0) continue;
+
+      const relevanceScore = scoreRelevance(slugKeywords, content, primaryKeyword, contentKeywords);
+      if (relevanceScore <= 0) continue;
+
+      const best = findBestAnchor(url, content, primaryKeyword, relaxed);
+      if (!best) continue;
+      if (excludeAnchors.has(best.anchor.toLowerCase())) continue;
+
+      out.push({ url, anchorText: best.anchor, relevanceScore, anchorScore: best.anchorScore });
+    }
+
+    // Strongest topical relevance first, then anchor quality.
+    out.sort(
+      (a, b) => b.relevanceScore - a.relevanceScore || b.anchorScore - a.anchorScore
+    );
+    return out;
+  };
+
+  const links: InternalLink[] = [];
+  const usedUrls = new Set<string>();
+  const usedAnchors = new Set<string>();
+
+  const take = (candidates: Array<{ url: string; anchorText: string }>) => {
+    for (const c of candidates) {
+      if (links.length >= maxLinks) break;
+      const anchorKey = c.anchorText.toLowerCase();
+      if (usedUrls.has(c.url) || usedAnchors.has(anchorKey)) continue;
+      usedUrls.add(c.url);
+      usedAnchors.add(anchorKey);
+      links.push({ anchorText: c.anchorText, url: c.url, isLive: true });
+    }
+  };
+
+  // Pass 1 — strict, slug-tied 2–3 word anchors.
+  take(collect(false, usedUrls, usedAnchors));
+
+  // Pass 2 — relaxed (4-word window + partial slug matches) only if still short.
+  if (links.length < minLinks) {
+    take(collect(true, usedUrls, usedAnchors));
+  }
+
+  return links;
+}
+
+export interface PageRelevance {
+  score: number;          // overall topical-overlap score
+  strongMatches: number;  // article topics found in the page's title/description/headings
+  pkInPage: boolean;      // full primary keyword appears in the page's title/description
+}
+
+/**
+ * Score how relevant a FETCHED page actually is to the article — based on the
+ * page's real title, meta description, headings and body text, not its URL.
+ * A slug keyword proves nothing; this reads what the page is genuinely about.
+ *
+ * Signals (strong → weak):
+ *   • article topic word in page TITLE        +5
+ *   • article topic word in page DESCRIPTION  +3
+ *   • article topic word in page HEADINGS     +2
+ *   • article topic word only in body text    +1 (capped at 6 — body text on a
+ *     magazine page includes related-article widgets, so it's a weak signal)
+ *   • full primary keyword in title/desc     +12
+ */
+export function scorePageRelevance(
+  page: { title: string; description: string; headings: string[]; bodyText: string },
+  content: string,
+  primaryKeyword: string
+): PageRelevance {
+  const tokenize = (s: string) =>
+    new Set(
+      s
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 3 && !CONTENT_STOP.has(w) && /^[a-z]+$/.test(w))
+    );
+
+  const contentKw = new Set(extractContentKeywords(content));
+  const titleSet = tokenize(page.title);
+  const descSet = tokenize(page.description);
+  const headSet = tokenize(page.headings.join(' '));
+  const bodySet = tokenize(page.bodyText);
+
+  let score = 0;
+  let strongMatches = 0;
+  let bodyOnly = 0;
+
+  for (const w of contentKw) {
+    if (titleSet.has(w)) {
+      score += 5;
+      strongMatches++;
+    } else if (descSet.has(w)) {
+      score += 3;
+      strongMatches++;
+    } else if (headSet.has(w)) {
+      score += 2;
+      strongMatches++;
+    } else if (bodySet.has(w)) {
+      bodyOnly++;
+    }
+  }
+  score += Math.min(bodyOnly, 6);
+
+  const pageHeadText = `${page.title} ${page.description}`.toLowerCase();
+  const pkLower = primaryKeyword.toLowerCase().trim();
+  const pkInPage = pkLower.length > 0 && pageHeadText.includes(pkLower);
+  if (pkInPage) {
+    score += 12;
+  } else {
+    for (const w of pkLower.split(/\s+/)) {
+      if (w.length > 3 && pageHeadText.includes(w)) score += 3;
+    }
+  }
+
+  return { score, strongMatches, pkInPage };
 }
 
 /**
