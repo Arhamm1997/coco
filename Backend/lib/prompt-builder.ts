@@ -127,9 +127,17 @@ suggestions are valid backups.
    RIGHT: Your paragraph1 says "clinic operations easier" → you write: clinic operations ← PASSES
 
 3. Anchor text must be 2–4 words only, and it must READ NATURALLY as a meaningful phrase —
-   a noun phrase a human editor would link (e.g. "geothermal spa pools", "boutique hotel in Lisbon").
-   Never a clipped fragment ("pools steam", "and luxury"), never a verb scrap, never generic filler
-   ("click here", "this article").
+   a NOUN PHRASE a human editor would link (e.g. "geothermal spa pools", "dermal fillers",
+   "youthful glow", "anti-aging methods").
+   - It must NOT start or end with a function word: a / an / the / your / our / their / more / most /
+     can / will / how / it / you / consider / make / need, etc.
+   - It must NOT be a sentence fragment or verb scrap.
+   - BAD (sentence fragments — never do this): "can help you look", "your youthful", "more advanced",
+     "Consider facelift", "and luxury", "pools steam".
+   - GOOD (clean noun phrases): "anti-aging methods", "youthful glow", "dermal fillers",
+     "healthy skin", "facelift technique".
+   - Never generic filler ("click here", "this article").
+   Pick the phrase that best names what the linked page is about, copied verbatim from the article.
 
 4. DIRECT TOPIC RELEVANCE — judged from the page's REAL "title" and "description" fields
    (these were fetched from the live page; they are the truth about what the page covers).

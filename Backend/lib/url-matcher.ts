@@ -19,6 +19,40 @@ const CONTENT_STOP = new Set([
   'they', 'them', 'their', 'what', 'your', 'some', 'each', 'there',
 ]);
 
+// Words too weak to START or END an anchor. An anchor bounded by these reads as
+// a sentence fragment ("can help you look", "your youthful", "more advanced",
+// "Consider facelift") instead of a meaningful noun phrase. Built on the stop
+// sets plus modals, auxiliaries, light/imperative verbs, and loose pronouns —
+// kept deliberately conservative so real phrases ("look younger", "spa day")
+// still pass.
+const WEAK_EDGE_WORDS = new Set<string>([
+  ...STOP_WORDS,
+  ...CONTENT_STOP,
+  // modals / auxiliaries
+  'could', 'would', 'should', 'shall', 'may', 'might', 'must',
+  'do', 'does', 'is', 'am', 'be', 'being', 'were',
+  // light / imperative verbs that make awkward anchor edges
+  'consider', 'considers', 'make', 'makes', 'need', 'needs', 'want', 'wants',
+  'keep', 'keeps', 'take', 'takes', 'give', 'gives', 'using', 'add', 'adds',
+  // loose pronouns / particles
+  'his', 'him', 'my', 'me', 'we', 'it', 'as', 'so', 'if', 'an',
+]);
+
+/**
+ * True when an anchor reads as a meaningful 2–4 word phrase rather than a
+ * sentence fragment. Rejects anchors that begin or end with a weak/function
+ * word, or that carry no substantial content word. Exported so both the AI's
+ * suggested anchors and the deterministic ones are held to the same bar.
+ */
+export function isQualityAnchor(anchor: string): boolean {
+  const words = anchor.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
+  if (words.length < 2 || words.length > 4) return false;
+  if (WEAK_EDGE_WORDS.has(words[0]) || WEAK_EDGE_WORDS.has(words[words.length - 1])) return false;
+  // Needs at least one substantial content word so we never accept an anchor
+  // built entirely from short function words.
+  return words.some((w) => w.length >= 4 && !WEAK_EDGE_WORDS.has(w));
+}
+
 // Extract meaningful keywords from a URL path/slug
 function extractSlugKeywords(url: string): string[] {
   try {
@@ -308,10 +342,10 @@ function findBestAnchor(
 
       const words = phrase.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
 
-      // Anchors must not begin or end with a stop-word — keeps them clean
-      // ("geothermal pools", not "the geothermal" or "spa in").
-      const isStop = (w: string) => STOP_WORDS.has(w) || CONTENT_STOP.has(w);
-      if (isStop(words[0]) || isStop(words[words.length - 1])) continue;
+      // Anchors must not begin or end with a weak/function word — keeps them
+      // clean ("geothermal pools", not "the geothermal", "spa in" or
+      // "Consider facelift").
+      if (WEAK_EDGE_WORDS.has(words[0]) || WEAK_EDGE_WORDS.has(words[words.length - 1])) continue;
 
       let slugHits = 0;
       let pkHits = 0;

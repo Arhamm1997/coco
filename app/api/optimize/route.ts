@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
@@ -192,6 +192,12 @@ export async function POST(req: NextRequest) {
 
       // Rule (b): URL must be a read-and-confirmed relevant page
       if (!confirmedUrlSet.has(link.url)) return false;
+
+      // Rule (d): anchor must read as a meaningful phrase, not a sentence
+      // fragment ("can help you look", "your youthful", "Consider facelift").
+      // Rejected here, the URL stays unused and the deterministic top-up
+      // re-anchors it with a clean phrase from the same confirmed page.
+      if (!isQualityAnchor(cleanAnchor)) return false;
 
       // Dedupe — each URL and each anchor used at most once
       if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
