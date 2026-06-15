@@ -111,11 +111,23 @@ export async function POST(req: NextRequest) {
       .filter((e) => e.wasRead && (e.pkInPage || e.strongMatches >= 2) && e.pageScore >= 12)
       .sort((a, b) => b.pageScore - a.pageScore);
 
-    // Fallback when the site can't be read (offline/blocked): slug order, so
-    // the feature degrades instead of dying. Page-verified mode needs ≥3 hits.
-    const usingPageData = confirmed.length >= 3;
-    const topCandidates = (usingPageData ? confirmed : enriched).slice(0, 25);
+    // Links are ONLY ever drawn from pages we actually READ and confirmed are
+    // about this topic. We never fall back to slug-keyword matches: a shared
+    // word like "ideas" / "start" / "features" in a URL is not relevance, and
+    // padding to a target count with such matches is precisely the failure we
+    // must avoid. Returning 2 genuinely relevant links (or 0) is correct —
+    // padding to 7 with irrelevant pages is not.
+    const readCount = enriched.filter((e) => e.wasRead).length;
+    const topCandidates = confirmed.slice(0, 25);
     const liveUrlCount = topCandidates.length;
+
+    // Surfaced in Render logs so we can tell *why* a run produced few links:
+    // a fetch/network problem (low readCount) vs. a sheet that simply lacks
+    // pages on this topic (high readCount, low confirmed).
+    console.log(
+      `[optimize] internal-links: ${slugCandidates.length} slug candidates → ` +
+      `${readCount} pages read → ${confirmed.length} confirmed relevant`
+    );
 
     // ── 3. Build the AI prompt — pass top 25 candidates ───────────────────
     const prompt = buildPrompt({
@@ -189,23 +201,20 @@ export async function POST(req: NextRequest) {
       return true;
     });
 
-    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool, with
-    // anchors sliced verbatim from the article. When pages were actually read
-    // and verified we aim for 7 links; in slug-only fallback mode we stop at 3
-    // rather than pad with unverified matches.
+    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool
+    // (slug scoring here just picks the best anchor among pages we already
+    // verified), with anchors sliced verbatim from the article. We aim for up
+    // to 7 links, but if fewer confirmed pages exist we return fewer — never
+    // pad with unverified pages.
     let finalLinks = [...validatedAILinks];
-    const targetCount = usingPageData ? 7 : 3;
+    const targetCount = 7;
     if (finalLinks.length < targetCount) {
       const remaining = topCandidates
         .map((u) => u.url)
         .filter((u) => !usedUrls.has(u));
-      const extras = buildInternalLinks(
-        content,
-        remaining,
-        primaryKeyword,
-        targetCount - finalLinks.length,
-        targetCount - finalLinks.length
-      ).filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()));
+      const need = targetCount - finalLinks.length;
+      const extras = buildInternalLinks(content, remaining, primaryKeyword, need, need)
+        .filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()));
       finalLinks = [...finalLinks, ...extras];
     }
 
