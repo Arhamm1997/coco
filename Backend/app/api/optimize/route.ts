@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorIsRelevantToURL } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
@@ -208,21 +208,16 @@ export async function POST(req: NextRequest) {
       // re-anchors it with a clean phrase from the same confirmed page.
       if (!isQualityAnchor(cleanAnchor)) return false;
 
-      // Rule (e): the anchor must actually relate to the page it points at.
-      // The AI sometimes pins a verbatim, on-topic-looking phrase to the wrong
-      // confirmed page (e.g. "Yellow Days" → a bad-hair-DAYS wig guide). Require
-      // a meaningful anchor word to appear in the destination's REAL fetched
-      // title/description (judging by content, per our linking rule), falling
-      // back to the URL slug. Rejected here, the URL returns to the pool and the
-      // deterministic top-up re-anchors it with a slug-tied phrase.
-      const destText = destTextByUrl.get(link.url) || '';
-      const anchorRelates =
-        cleanAnchor
-          .toLowerCase()
-          .split(/\s+/)
-          .some((w) => w.length > 3 && destText.includes(w)) ||
-        anchorIsRelevantToURL(cleanAnchor, link.url);
-      if (!anchorRelates) return false;
+      // Rule (e): the anchor must genuinely NAME what the destination page is
+      // about — a substantial anchor word must match the page's REAL fetched
+      // title/description as a whole word (or a ≥5-letter containment). Judged
+      // by the page's own content, never the URL slug, and a shared short word
+      // is not enough. This is the "1000% relevant" rule: the AI sometimes pins
+      // a verbatim phrase to the wrong confirmed page, and this stops it.
+      // Rejected here, the URL returns to the pool for the deterministic top-up.
+      if (!anchorMatchesPageText(cleanAnchor, destTextByUrl.get(link.url) || '')) {
+        return false;
+      }
 
       // Dedupe — each URL and each anchor used at most once
       if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
@@ -245,7 +240,11 @@ export async function POST(req: NextRequest) {
         .filter((u) => !usedUrls.has(u));
       const need = targetCount - finalLinks.length;
       const extras = buildInternalLinks(content, remaining, primaryKeyword, need, need)
-        .filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()));
+        .filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()))
+        // Hold the deterministic top-up to the same strong anchor↔page rule —
+        // its anchor must also name the destination page's real content, so we
+        // never pad with a slug-tied phrase the page itself isn't about.
+        .filter((l) => anchorMatchesPageText(l.anchorText, destTextByUrl.get(l.url) || ''));
       finalLinks = [...finalLinks, ...extras];
     }
 

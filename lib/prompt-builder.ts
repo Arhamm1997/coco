@@ -147,6 +147,16 @@ suggestions are valid backups.
    — If the article is about a hotel in Phoenix → link to pages whose TITLE/DESCRIPTION are about hotels, travel, destinations. NOT home decor.
    — If the article is about spa treatments → link to pages whose TITLE/DESCRIPTION are about wellness, spas, retreats. NOT fashion.
    — Sharing one word like "luxury" or "design" is NOT enough. The page's whole topic must match.
+   — THE ANCHOR ITSELF MUST BE A KEYWORD THAT NAMES THE DESTINATION PAGE. Choose an anchor
+     whose own words appear in (or directly name) that page's TITLE/DESCRIPTION, so the anchor
+     and the page are a 1000% unmistakable match — a reader must be able to predict the exact
+     destination from the anchor alone.
+     RIGHT: anchor "Tame Impala" → the page titled about Tame Impala; anchor "Hotel Heaven" → the
+     Hotel Heaven album page.
+     WRONG: anchor "Yellow Days" → a "Bad Hair Days" wig guide (only the word "days" is shared);
+     anchor "East London" → a bingo page (only "London" is shared).
+     If no article phrase genuinely names a given page, DO NOT link that page — drop it. A keyword
+     accidentally shared with the URL or with one word of the title is NEVER enough.
 
 5. Provide 3 to 7 links. Give as many as are GENUINELY relevant — if the database supports 7
    strong matches, give 7. If only 4 are truly relevant, give 4. Quality over count, always.

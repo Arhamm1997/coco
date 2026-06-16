@@ -552,3 +552,42 @@ export function anchorIsRelevantToURL(anchor: string, url: string): boolean {
   if (words.length === 0) return false;
   return words.some((word) => urlPath.includes(word));
 }
+
+/**
+ * STRONG anchor↔destination check for SEO internal links. True only when the
+ * anchor genuinely NAMES what the destination page is about: at least one
+ * substantial anchor word (≥4 letters, not a stop-word) matches the page's REAL
+ * fetched title + meta description as a whole word — or is contained in one of
+ * those words when the shared part is ≥5 letters (so "Yellow" matches a page
+ * titled "Yellowdays", "hotel" matches "hotels", but "days" never matches
+ * "Yellowdays" and short/function words never qualify).
+ *
+ * This is what makes a link "1000% relevant": relevance is judged by the page's
+ * own content, never the URL slug, and a mere shared short word is not enough.
+ */
+export function anchorMatchesPageText(anchor: string, pageText: string): boolean {
+  const pageWords = [
+    ...new Set(
+      pageText
+        .toLowerCase()
+        .split(/\W+/)
+        .filter((w) => w.length > 3 && !CONTENT_STOP.has(w))
+    ),
+  ];
+  if (pageWords.length === 0) return false;
+
+  const anchorWords = anchor
+    .toLowerCase()
+    .split(/[\s'‘’\-]+/)
+    .filter((w) => w.length > 3 && !CONTENT_STOP.has(w));
+  if (anchorWords.length === 0) return false;
+
+  return anchorWords.some((a) =>
+    pageWords.some(
+      (p) =>
+        a === p ||
+        (a.length >= 5 && p.includes(a)) ||
+        (p.length >= 5 && a.includes(p))
+    )
+  );
+}
