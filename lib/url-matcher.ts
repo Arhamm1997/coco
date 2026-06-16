@@ -36,6 +36,10 @@ const WEAK_EDGE_WORDS = new Set<string>([
   'keep', 'keeps', 'take', 'takes', 'give', 'gives', 'using', 'add', 'adds',
   // loose pronouns / particles
   'his', 'him', 'my', 'me', 'we', 'it', 'as', 'so', 'if', 'an',
+  // generic quantifiers / fillers that make vague, non-descriptive anchor edges
+  // ("about everything", "everything special", "really good")
+  'about', 'everything', 'anything', 'something', 'someone', 'everyone',
+  'really', 'always', 'never', 'often',
 ]);
 
 /**
@@ -45,6 +49,16 @@ const WEAK_EDGE_WORDS = new Set<string>([
  * suggested anchors and the deterministic ones are held to the same bar.
  */
 export function isQualityAnchor(anchor: string): boolean {
+  // A space-delimited single-letter edge token is almost always a sliced
+  // possessive/contraction fragment ("s first" from "Day's first", "t know"
+  // from "don't know") rather than a real word — reject the whole anchor.
+  // Genuine possessives ("London's best") survive because the apostrophe keeps
+  // them as one space-delimited token here.
+  const spaceTokens = anchor.trim().split(/\s+/).filter(Boolean);
+  if (spaceTokens.length < 2 || spaceTokens.length > 4) return false;
+  const letters = (t: string) => t.replace(/[^A-Za-z]/g, '').length;
+  if (letters(spaceTokens[0]) < 2 || letters(spaceTokens[spaceTokens.length - 1]) < 2) return false;
+
   const words = anchor.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
   if (words.length < 2 || words.length > 4) return false;
   if (WEAK_EDGE_WORDS.has(words[0]) || WEAK_EDGE_WORDS.has(words[words.length - 1])) return false;

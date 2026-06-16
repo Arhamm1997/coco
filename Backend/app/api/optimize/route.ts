@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorIsRelevantToURL } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
@@ -169,6 +169,15 @@ export async function POST(req: NextRequest) {
     ].join('\n').toLowerCase();
 
     const confirmedUrlSet = new Set(topCandidates.map((u) => u.url));
+    // Real fetched title/description per confirmed URL — used to verify the
+    // anchor↔destination pairing against what the page is actually about,
+    // not just its slug.
+    const destTextByUrl = new Map(
+      topCandidates.map((u): [string, string] => [
+        u.url,
+        `${u.pageTitle} ${u.pageDescription}`.toLowerCase(),
+      ])
+    );
     const usedUrls = new Set<string>();
     const usedAnchors = new Set<string>();
 
@@ -198,6 +207,22 @@ export async function POST(req: NextRequest) {
       // Rejected here, the URL stays unused and the deterministic top-up
       // re-anchors it with a clean phrase from the same confirmed page.
       if (!isQualityAnchor(cleanAnchor)) return false;
+
+      // Rule (e): the anchor must actually relate to the page it points at.
+      // The AI sometimes pins a verbatim, on-topic-looking phrase to the wrong
+      // confirmed page (e.g. "Yellow Days" → a bad-hair-DAYS wig guide). Require
+      // a meaningful anchor word to appear in the destination's REAL fetched
+      // title/description (judging by content, per our linking rule), falling
+      // back to the URL slug. Rejected here, the URL returns to the pool and the
+      // deterministic top-up re-anchors it with a slug-tied phrase.
+      const destText = destTextByUrl.get(link.url) || '';
+      const anchorRelates =
+        cleanAnchor
+          .toLowerCase()
+          .split(/\s+/)
+          .some((w) => w.length > 3 && destText.includes(w)) ||
+        anchorIsRelevantToURL(cleanAnchor, link.url);
+      if (!anchorRelates) return false;
 
       // Dedupe — each URL and each anchor used at most once
       if (usedUrls.has(link.url) || usedAnchors.has(cleanAnchor.toLowerCase())) return false;
