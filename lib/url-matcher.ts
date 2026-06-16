@@ -30,7 +30,8 @@ const GENERIC_TOPIC_WORDS = new Set([
   'things', 'ways', 'great', 'good', 'made', 'today', 'perfect', 'amazing',
   'essential', 'favourite', 'favorite', 'must', 'help', 'helps', 'look',
   'looks', 'really', 'around', 'everyday', 'simple', 'easy', 'complete',
-  'review', 'reviews', 'expect',
+  'review', 'reviews', 'expect', 'helpful', 'popular', 'useful', 'important',
+  'various', 'several', 'awesome', 'wonderful',
 ]);
 
 // Words too weak to START or END an anchor. An anchor bounded by these reads as
@@ -56,6 +57,10 @@ const WEAK_EDGE_WORDS = new Set<string>([
   'about', 'everything', 'anything', 'something', 'someone', 'everyone',
   'really', 'always', 'never', 'often', 'every', 'around', 'everywhere',
   'anywhere', 'whatever', 'whenever', 'wherever', 'whoever',
+  // adverb / quantifier modifiers that read as weak at an edge ("only help",
+  // "most of", "even more")
+  'only', 'even', 'quite', 'rather', 'much', 'many', 'most', 'less', 'such',
+  'same', 'still', 'almost', 'enough',
 ]);
 
 // Tail words of very common multi-word proper nouns. They essentially never
@@ -114,9 +119,12 @@ export function isQualityAnchor(anchor: string): boolean {
   // Reject anchors that START with the tail of a multi-word proper noun — a
   // broken slice that dropped its leading word ("New York City" → "York City").
   if (PROPER_NOUN_TAILS.has(words[0])) return false;
-  // Needs at least one substantial content word so we never accept an anchor
-  // built entirely from short function words.
-  return words.some((w) => w.length >= 4 && !WEAK_EDGE_WORDS.has(w));
+  // Needs at least one substantial content word that NAMES a topic — not a
+  // function word and not generic SEO filler. Rejects "essential tips",
+  // "ultimate guide", "only help" (no real keyword noun).
+  return words.some(
+    (w) => w.length >= 4 && !WEAK_EDGE_WORDS.has(w) && !GENERIC_TOPIC_WORDS.has(w)
+  );
 }
 
 // Extract meaningful keywords from a URL path/slug
