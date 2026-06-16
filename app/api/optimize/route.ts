@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText, isLikelySelfLink } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
@@ -109,6 +109,9 @@ export async function POST(req: NextRequest) {
     // AND the overall overlap score clears the bar.
     const confirmed = enriched
       .filter((e) => e.wasRead && (e.pkInPage || e.strongMatches >= 2) && e.pageScore >= 12)
+      // Never link the article to its OWN page — a candidate whose title is
+      // essentially the primary keyword is this same article, not a related read.
+      .filter((e) => !isLikelySelfLink(e.pageTitle, primaryKeyword))
       .sort((a, b) => b.pageScore - a.pageScore);
 
     // Links are ONLY ever drawn from pages we actually READ and confirmed are

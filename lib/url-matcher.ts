@@ -50,6 +50,7 @@ const WEAK_EDGE_WORDS = new Set<string>([
   'keep', 'keeps', 'take', 'takes', 'give', 'gives', 'using', 'add', 'adds',
   // loose pronouns / particles
   'his', 'him', 'my', 'me', 'we', 'it', 'as', 'so', 'if', 'an',
+  'to', 'at', 'by', 'up', 'via', 'off',
   // generic quantifiers / fillers that make vague, non-descriptive anchor edges
   // ("about everything", "everything special", "really good")
   'about', 'everything', 'anything', 'something', 'someone', 'everyone',
@@ -610,4 +611,34 @@ export function anchorMatchesPageText(anchor: string, pageText: string): boolean
         (p.length >= 5 && a.includes(p))
     )
   );
+}
+
+/**
+ * True when a candidate page looks like the ARTICLE ITSELF rather than a related
+ * page — its title's content words are essentially the primary keyword (the
+ * article's own subject), so linking to it would be a self-reference (e.g. a
+ * "Best Souvenirs from New Zealand" article linking the words "Best Souvenirs"
+ * back to its own page). Conservative: only fires when the primary keyword has
+ * ≥3 content words and the title's content-word set differs from it by at most
+ * one word, so a genuinely different page that merely shares the keyword (a
+ * richer listicle, a sub-topic) is never dropped.
+ */
+export function isLikelySelfLink(pageTitle: string, primaryKeyword: string): boolean {
+  const toSet = (s: string) =>
+    new Set(
+      s
+        .toLowerCase()
+        .split(/\W+/)
+        .filter(
+          (w) => w.length > 3 && !CONTENT_STOP.has(w) && !GENERIC_TOPIC_WORDS.has(w)
+        )
+    );
+  const pk = toSet(primaryKeyword);
+  const title = toSet(pageTitle);
+  if (pk.size < 3 || title.size === 0) return false;
+
+  let diff = 0;
+  for (const w of pk) if (!title.has(w)) diff++;
+  for (const w of title) if (!pk.has(w)) diff++;
+  return diff <= 1;
 }
