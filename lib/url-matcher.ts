@@ -19,6 +19,20 @@ const CONTENT_STOP = new Set([
   'they', 'them', 'their', 'what', 'your', 'some', 'each', 'there',
 ]);
 
+// Generic SEO / filler words that show up across EVERY topic and so prove
+// nothing about what a page is actually about. Excluded from topic-keyword
+// extraction so a shared "best" / "ultimate guide" / "ideas" can never confirm
+// an off-topic page: a pets article must match on pet words (dog, puppy, breed),
+// not on filler. NOT added to the anchor stop sets — "best pet food" is still a
+// fine anchor; this only governs topic relevance.
+const GENERIC_TOPIC_WORDS = new Set([
+  'best', 'guide', 'guides', 'tips', 'idea', 'ideas', 'ultimate', 'thing',
+  'things', 'ways', 'great', 'good', 'made', 'today', 'perfect', 'amazing',
+  'essential', 'favourite', 'favorite', 'must', 'help', 'helps', 'look',
+  'looks', 'really', 'around', 'everyday', 'simple', 'easy', 'complete',
+  'review', 'reviews', 'expect',
+]);
+
 // Words too weak to START or END an anchor. An anchor bounded by these reads as
 // a sentence fragment ("can help you look", "your youthful", "more advanced",
 // "Consider facelift") instead of a meaningful noun phrase. Built on the stop
@@ -91,7 +105,13 @@ function extractContentKeywords(content: string): string[] {
   const words = content
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 3 && !CONTENT_STOP.has(w) && /^[a-z]+$/.test(w));
+    .filter(
+      (w) =>
+        w.length > 3 &&
+        !CONTENT_STOP.has(w) &&
+        !GENERIC_TOPIC_WORDS.has(w) &&
+        /^[a-z]+$/.test(w)
+    );
 
   const freq = new Map<string, number>();
   for (const w of words) {
