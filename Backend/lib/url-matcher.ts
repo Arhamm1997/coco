@@ -109,7 +109,16 @@ export function isQualityAnchor(anchor: string): boolean {
   const spaceTokens = anchor.trim().split(/\s+/).filter(Boolean);
   if (spaceTokens.length < 2 || spaceTokens.length > 4) return false;
   const letters = (t: string) => t.replace(/[^A-Za-z]/g, '').length;
-  if (letters(spaceTokens[0]) < 2 || letters(spaceTokens[spaceTokens.length - 1]) < 2) return false;
+  // A 1-letter edge is a sliced possessive ("s first"). A 2-letter LOWERCASE
+  // edge is almost always a contraction/word scrap ("re making" from "you're
+  // making", "no time", "ve got") — reject it. Capitalised 2-letter edges are
+  // kept because they are real abbreviations ("NY hotels", "LA nightlife").
+  const tooShortEdge = (t: string) => {
+    const n = letters(t);
+    if (n < 2) return true;
+    return n < 3 && !/^[A-Z]/.test(t.trim());
+  };
+  if (tooShortEdge(spaceTokens[0]) || tooShortEdge(spaceTokens[spaceTokens.length - 1])) return false;
 
   const words = anchor.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
   if (words.length < 2 || words.length > 4) return false;

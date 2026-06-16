@@ -28,6 +28,11 @@ export async function GET() {
     status:    'ok',
     service:   'SEO Content Optimizer API',
     version:   '1.0.0',
+    // Bumped on every internal-link logic change so a deploy can be verified:
+    // hit /api/health and confirm linksEngine matches the latest code. If it
+    // still reads an older value, the running backend has NOT picked up the fix.
+    linksEngine: 'v2-strict-anchors-2026-06-16',
+    commit:    process.env.RENDER_GIT_COMMIT?.slice(0, 7) || 'local',
     timestamp: new Date().toISOString(),
     database:  { status: dbStatus },
   });
