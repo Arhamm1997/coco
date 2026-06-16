@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText, isLikelySelfLink } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText, isLikelySelfLink, isSameArticlePage } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
@@ -92,6 +92,11 @@ export async function POST(req: NextRequest) {
     const enriched = slugCandidates.map((c) => {
       const page = summaries.get(c.url) ?? null;
       const rel = page ? scorePageRelevance(page, content, primaryKeyword) : null;
+      // Self-link = this same article (title ≈ primary keyword, OR the page body
+      // reproduces most of the article). Either way we must never link to it.
+      const isSelf = page
+        ? isLikelySelfLink(page.title, primaryKeyword) || isSameArticlePage(content, page)
+        : false;
       return {
         ...c,
         pageTitle: page?.title || '',
@@ -100,6 +105,7 @@ export async function POST(req: NextRequest) {
         strongMatches: rel?.strongMatches ?? 0,
         pkInPage: rel?.pkInPage ?? false,
         wasRead: page !== null,
+        isSelf,
       };
     });
 
@@ -109,9 +115,8 @@ export async function POST(req: NextRequest) {
     // AND the overall overlap score clears the bar.
     const confirmed = enriched
       .filter((e) => e.wasRead && (e.pkInPage || e.strongMatches >= 2) && e.pageScore >= 12)
-      // Never link the article to its OWN page — a candidate whose title is
-      // essentially the primary keyword is this same article, not a related read.
-      .filter((e) => !isLikelySelfLink(e.pageTitle, primaryKeyword))
+      // Never link the article to its OWN page (self-reference).
+      .filter((e) => !e.isSelf)
       .sort((a, b) => b.pageScore - a.pageScore);
 
     // Links are ONLY ever drawn from pages we actually READ and confirmed are
@@ -244,9 +249,10 @@ export async function POST(req: NextRequest) {
       const need = targetCount - finalLinks.length;
       const extras = buildInternalLinks(content, remaining, primaryKeyword, need, need)
         .filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()))
-        // Hold the deterministic top-up to the same strong anchor↔page rule —
-        // its anchor must also name the destination page's real content, so we
-        // never pad with a slug-tied phrase the page itself isn't about.
+        // Hold the deterministic top-up to the SAME anchor bar as AI links: a
+        // clean 2–4 word phrase (no fragments / proper-noun cuts) that also
+        // names the destination page's real content.
+        .filter((l) => isQualityAnchor(l.anchorText))
         .filter((l) => anchorMatchesPageText(l.anchorText, destTextByUrl.get(l.url) || ''));
       finalLinks = [...finalLinks, ...extras];
     }

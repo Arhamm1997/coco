@@ -52,10 +52,42 @@ const WEAK_EDGE_WORDS = new Set<string>([
   'his', 'him', 'my', 'me', 'we', 'it', 'as', 'so', 'if', 'an',
   'to', 'at', 'by', 'up', 'via', 'off',
   // generic quantifiers / fillers that make vague, non-descriptive anchor edges
-  // ("about everything", "everything special", "really good")
+  // ("about everything", "around every", "really good") and carry no noun
   'about', 'everything', 'anything', 'something', 'someone', 'everyone',
-  'really', 'always', 'never', 'often',
+  'really', 'always', 'never', 'often', 'every', 'around', 'everywhere',
+  'anywhere', 'whatever', 'whenever', 'wherever', 'whoever',
 ]);
+
+// Tail words of very common multi-word proper nouns. They essentially never
+// stand alone, so an anchor that STARTS with one is a broken slice that dropped
+// its leading word ("New York City" → "York City", "Los Angeles" → "Angeles").
+// Travel-heavy content makes these the common failure, so we reject such starts.
+// (A tail is still fine at the END of an anchor: "New York" is correct.)
+const PROPER_NOUN_TAILS = new Set([
+  'york', 'angeles', 'vegas', 'francisco', 'diego', 'zealand', 'kong',
+  'rico', 'lanka', 'arabia', 'jersey', 'orleans', 'hampshire', 'mexico',
+  'delhi', 'guinea', 'palma', 'gomera',
+]);
+
+// Words that must NEVER sit at an anchor edge, even when capitalised at the
+// start of a sentence or heading (articles, conjunctions, core prepositions).
+const CORE_FUNCTION_EDGE = new Set([
+  'the', 'a', 'an', 'and', 'or', 'but', 'of', 'to', 'for', 'in', 'on', 'at',
+  'with', 'this', 'that', 'these', 'those', 'your', 'our', 'its', 'their',
+  'his', 'her', 'my', 'from', 'by', 'as', 'is', 'are', 'was', 'were',
+]);
+
+// Decide whether a word is a bad anchor EDGE. A capitalised word is treated as a
+// proper noun and allowed, so "New York" / "Los Angeles" keep their leading word
+// — UNLESS it is a core function word ("The Best" is still rejected). A lowercase
+// word is rejected when it is weak/function ("around every", "the geothermal").
+function isBadAnchorEdge(rawWord: string): boolean {
+  const lower = rawWord.toLowerCase().replace(/[^a-z'’-]/g, '');
+  if (!lower) return true;
+  if (CORE_FUNCTION_EDGE.has(lower)) return true;
+  if (/^[A-Z]/.test(rawWord)) return false;
+  return WEAK_EDGE_WORDS.has(lower);
+}
 
 /**
  * True when an anchor reads as a meaningful 2–4 word phrase rather than a
@@ -76,7 +108,12 @@ export function isQualityAnchor(anchor: string): boolean {
 
   const words = anchor.toLowerCase().split(/[\s'‘’\-]+/).filter(Boolean);
   if (words.length < 2 || words.length > 4) return false;
-  if (WEAK_EDGE_WORDS.has(words[0]) || WEAK_EDGE_WORDS.has(words[words.length - 1])) return false;
+  // Case-aware edge check: a capitalised proper noun ("New York") is allowed; a
+  // weak/function word at the edge ("around every", "the best") is not.
+  if (isBadAnchorEdge(spaceTokens[0]) || isBadAnchorEdge(spaceTokens[spaceTokens.length - 1])) return false;
+  // Reject anchors that START with the tail of a multi-word proper noun — a
+  // broken slice that dropped its leading word ("New York City" → "York City").
+  if (PROPER_NOUN_TAILS.has(words[0])) return false;
   // Needs at least one substantial content word so we never accept an anchor
   // built entirely from short function words.
   return words.some((w) => w.length >= 4 && !WEAK_EDGE_WORDS.has(w));
@@ -380,7 +417,11 @@ function findBestAnchor(
       // Anchors must not begin or end with a weak/function word — keeps them
       // clean ("geothermal pools", not "the geothermal", "spa in" or
       // "Consider facelift").
-      if (WEAK_EDGE_WORDS.has(words[0]) || WEAK_EDGE_WORDS.has(words[words.length - 1])) continue;
+      const rawWords = phrase.split(/[\s'‘’\-]+/).filter(Boolean);
+      if (isBadAnchorEdge(rawWords[0]) || isBadAnchorEdge(rawWords[rawWords.length - 1])) continue;
+      // Never start an anchor on the tail of a multi-word proper noun
+      // ("New York City" must not be sliced into "York City").
+      if (PROPER_NOUN_TAILS.has(words[0])) continue;
 
       let slugHits = 0;
       let pkHits = 0;
@@ -641,4 +682,30 @@ export function isLikelySelfLink(pageTitle: string, primaryKeyword: string): boo
   for (const w of pk) if (!title.has(w)) diff++;
   for (const w of title) if (!pk.has(w)) diff++;
   return diff <= 1;
+}
+
+/**
+ * Robust self-link detection that does NOT depend on the primary keyword's
+ * length: a candidate page IS this article when its real fetched body text
+ * reproduces most of the article's own subject words. Catches the case the
+ * title check misses — e.g. an "NYC Nightlife" article whose primary keyword is
+ * too short for isLikelySelfLink, but whose own published page is in the sheet.
+ *
+ * Compares the article's top subject keywords against the page body; ≥60 %
+ * coverage means it is the same article. A genuinely different page on the same
+ * topic shares far fewer of THIS article's specific words, so it is never
+ * dropped.
+ */
+export function isSameArticlePage(
+  content: string,
+  page: { bodyText: string }
+): boolean {
+  const articleKw = extractContentKeywords(content);
+  if (articleKw.length < 8) return false;
+  const bodyWords = new Set(
+    page.bodyText.toLowerCase().split(/\W+/).filter((w) => w.length > 3)
+  );
+  let hit = 0;
+  for (const w of articleKw) if (bodyWords.has(w)) hit++;
+  return hit / articleKw.length >= 0.6;
 }
