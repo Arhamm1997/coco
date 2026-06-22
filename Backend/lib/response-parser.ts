@@ -47,10 +47,13 @@ function parseLinks(raw: string): InternalLink[] {
     );
     const url = stripQuotes(parts[1]).replace(/[<>]/g, '').trim();
 
-    // Minimal sanity check only — route.ts handles full validation
-    if (!anchor || anchor.length < 2 || !url || !url.startsWith('http')) continue;
+    // Clean up common trailing punctuation the AI sometimes appends
+    const cleanedUrl = url.replace(/[.,;\)\]]+$/g, '').trim();
 
-    links.push({ anchorText: anchor, url, isLive: true });
+    // Minimal sanity check only — route.ts handles full validation
+    if (!anchor || anchor.length < 2 || !cleanedUrl || !cleanedUrl.startsWith('http')) continue;
+
+    links.push({ anchorText: anchor, url: cleanedUrl, isLive: true });
   }
 
   return links;
@@ -62,10 +65,10 @@ function parseXMLFormat(text: string): ParsedOutput {
     h3:                      extractXMLTag(text, 'h3') || 'Key Insights',
     paragraph1:              extractXMLTag(text, 'paragraph1'),
     paragraph2:              extractXMLTag(text, 'paragraph2'),
-    metaTitle:               extractXMLTag(text, 'meta_title').substring(0, 55),
-    metaDescription:         extractXMLTag(text, 'meta_description').substring(0, 145),
+    metaTitle:               stripQuotes(extractXMLTag(text, 'meta_title')).substring(0, 55),
+    metaDescription:         stripQuotes(extractXMLTag(text, 'meta_description')).substring(0, 145),
     internalLinks:           parseLinks(extractXMLTag(text, 'links')),
-    placementRecommendation: extractXMLTag(text, 'placement'),
+    placementRecommendation: stripQuotes(extractXMLTag(text, 'placement')),
   };
 }
 
@@ -94,7 +97,7 @@ function parseLabelFormat(text: string, originalContent: string): ParsedOutput {
     const url = extract(`LINK${i}_URL:`);
     if (!anchor || !url) continue;
     if (originalContent.toLowerCase().includes(anchor.toLowerCase())) {
-      internalLinks.push({ anchorText: anchor, url, isLive: true });
+      internalLinks.push({ anchorText: stripQuotes(anchor), url: stripQuotes(url).replace(/[.,;\)\]]+$/g, ''), isLive: true });
     }
   }
 
@@ -104,7 +107,7 @@ function parseLabelFormat(text: string, originalContent: string): ParsedOutput {
     paragraph1:              extractMultiline('PARAGRAPH1:', ['H3:', 'META_TITLE:', 'LINK1_ANCHOR:']),
     paragraph2:              extractMultiline('PARAGRAPH2:', ['META_TITLE:', 'META_DESC:', 'LINK1_ANCHOR:']),
     metaTitle:               extract('META_TITLE:').substring(0, 55),
-    metaDescription:         extract('META_DESC:').substring(0, 145),
+    metaDescription:         stripQuotes(extract('META_DESC:')).substring(0, 145),
     internalLinks,
     placementRecommendation: extractMultiline('PLACEMENT:', []),
   };
