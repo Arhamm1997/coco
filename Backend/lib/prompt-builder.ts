@@ -58,7 +58,7 @@ OUTPUT FORMAT — wrap every field in XML tags, exactly in this order:
 
 <meta_title>[Standalone, compelling search headline ≤55 characters. Primary keyword near the front. Reads as a real, sensible article title — never keyword-stuffed or cut off mid-thought. DO NOT add "| House of Coco" or any site name.]</meta_title>
 
-<meta_description>[130–145 characters. Lead with the primary keyword, then a benefit-driven hook that accurately summarises THIS specific article. One complete, readable sentence. No clickbait, no quotes, no mid-word truncation.]</meta_description>
+<meta_description>[130–155 characters. Lead with the primary keyword, then a benefit-driven hook that accurately summarises THIS specific article. One complete, readable sentence. No clickbait, no quotes, no mid-word truncation.]</meta_description>
 
 <links>
 anchor text 1 | URL 1 | FOUND
@@ -82,7 +82,7 @@ META TITLE RULES — critical
 ════════════════════════════════════════
 META DESCRIPTION RULES — critical
 ════════════════════════════════════════
-- 130–145 characters — count every character including spaces. Never exceed 145 (it gets cut off in search results).
+- 130–155 characters — count every character including spaces. Never exceed 155 (it gets cut off in search results).
 - MUST contain the PRIMARY KEYWORD exactly as provided — same words, same order (casing may differ).
   A paraphrase or partial keyword FAILS validation and the description will be replaced.
 - Put the PRIMARY KEYWORD in the first half of the sentence, worded naturally (not stuffed).
@@ -216,7 +216,7 @@ PRE-OUTPUT CHECKLIST (run silently before responding)
 [ ] Paragraph 1 is 70–90 words (counted)
 [ ] Paragraph 2 is 70–90 words (counted)
 [ ] Meta title ≤55 chars, standalone and sensible (NO "| House of Coco" or any brand/site name appended)
-[ ] Meta description 130–145 chars, contains the EXACT primary keyword in the first half, complete sentence (not cut off), describes THIS article specifically
+[ ] Meta description 130–155 chars, contains the EXACT primary keyword in the first half, complete sentence (not cut off), describes THIS article specifically
 [ ] 3–7 links given — every one genuinely relevant, none added just to fill the count
 [ ] Each anchor text exists verbatim in the article content (tested with .lower() check)
 [ ] Each anchor reads naturally as a meaningful phrase — no clipped fragments

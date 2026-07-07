@@ -50,7 +50,7 @@ const GenerationResultSchema = new Schema<IGenerationResult>(
     paragraph1:             { type: String, required: true },
     paragraph2:             { type: String, required: true },
     metaTitle:              { type: String, required: true, maxlength: 55 },
-    metaDescription:        { type: String, required: true, maxlength: 145 },
+    metaDescription:        { type: String, required: true, maxlength: 155 },
     internalLinks:          { type: [InternalLinkSchema], default: [] },
     placementRecommendation: { type: String, required: true },
 
