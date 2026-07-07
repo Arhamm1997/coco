@@ -151,7 +151,7 @@ function VerificationPanel({ results, keyword }: { results: SEOResult; keyword: 
     { label: 'Keyword in H2',       pass: results.h2.toLowerCase().includes(kw) },
     { label: 'Keyword in meta desc', pass: results.metaDescription.toLowerCase().includes(kw) },
     { label: 'Meta title ≤55',       pass: results.metaTitle.length <= 55 },
-    { label: 'Meta desc ≤145',       pass: results.metaDescription.length <= 145 },
+    { label: 'Meta desc ≤155',       pass: results.metaDescription.length <= 155 },
     { label: 'P1 70–90 words',       pass: p1Words >= 70 && p1Words <= 90 },
     { label: 'P2 70–90 words',       pass: p2Words >= 70 && p2Words <= 90 },
     { label: '3–7 links found',      pass: results.internalLinks.length >= 3 && results.internalLinks.length <= 7 },
@@ -487,7 +487,7 @@ export function Step4Results({ results, provider, keyword, onStartOver }: Step4P
                 Meta Description
               </span>
               <div className="flex items-center gap-2">
-                <CharBadge count={results.metaDescription.length} max={145} />
+                <CharBadge count={results.metaDescription.length} max={155} />
                 <CopyButton text={results.metaDescription} />
               </div>
             </div>
