@@ -83,8 +83,11 @@ META TITLE RULES — critical
 META DESCRIPTION RULES — critical
 ════════════════════════════════════════
 - 130–145 characters — count every character including spaces. Never exceed 145 (it gets cut off in search results).
+- MUST contain the PRIMARY KEYWORD exactly as provided — same words, same order (casing may differ).
+  A paraphrase or partial keyword FAILS validation and the description will be replaced.
 - Put the PRIMARY KEYWORD in the first half of the sentence, worded naturally (not stuffed).
-- Accurately describe THIS article — a reader must know what the post is about and why to click.
+- Accurately describe THIS article — read the FULL article first. Summarise what the article
+  ACTUALLY says (its real places, services, and specifics), never a generic take on the topic.
 - One complete, self-contained sentence (or two very short ones). Never end mid-word or with "...".
 - No quotation marks, no brand/site name, no clickbait, no em dashes.
 - Bad:  "Read this amazing must-see guide you won't believe!"  ← vague clickbait, no keyword
@@ -213,7 +216,7 @@ PRE-OUTPUT CHECKLIST (run silently before responding)
 [ ] Paragraph 1 is 70–90 words (counted)
 [ ] Paragraph 2 is 70–90 words (counted)
 [ ] Meta title ≤55 chars, standalone and sensible (NO "| House of Coco" or any brand/site name appended)
-[ ] Meta description 130–145 chars, primary keyword in the first half, complete sentence (not cut off)
+[ ] Meta description 130–145 chars, contains the EXACT primary keyword in the first half, complete sentence (not cut off), describes THIS article specifically
 [ ] 3–7 links given — every one genuinely relevant, none added just to fill the count
 [ ] Each anchor text exists verbatim in the article content (tested with .lower() check)
 [ ] Each anchor reads naturally as a meaningful phrase — no clipped fragments

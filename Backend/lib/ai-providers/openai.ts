@@ -9,9 +9,10 @@ export async function callOpenAI(
 ): Promise<AICallResult> {
   const client = new OpenAI({ apiKey });
 
+  // No max_tokens — the model may use its full output budget, so the
+  // response is never truncated mid-field.
   const response = await client.chat.completions.create({
     model: modelId || 'gpt-4o',
-    max_tokens: 2048,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },

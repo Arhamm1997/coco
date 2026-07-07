@@ -34,6 +34,17 @@ const GENERIC_TOPIC_WORDS = new Set([
   'various', 'several', 'awesome', 'wonderful',
 ]);
 
+// Site-wide descriptors: House of Coco is a luxury lifestyle magazine, so these
+// words appear on virtually EVERY page and can never, on their own, prove that
+// an anchor names a specific destination page ("luxury hotels" must not confirm
+// a "Luxury Skincare" page just because both say "luxury"). Excluded wherever
+// we judge the anchor↔page pairing; still fine INSIDE an anchor's wording.
+const GENERIC_DESCRIPTORS = new Set([
+  'luxury', 'luxurious', 'premium', 'bespoke', 'boutique', 'exclusive',
+  'stylish', 'stunning', 'beautiful', 'gorgeous', 'modern', 'trendy',
+  'world', 'experience', 'experiences', 'lifestyle', 'discover', 'explore',
+]);
+
 // Words too weak to START or END an anchor. An anchor bounded by these reads as
 // a sentence fragment ("can help you look", "your youthful", "more advanced",
 // "Consider facelift") instead of a meaningful noun phrase. Built on the stop
@@ -372,16 +383,21 @@ export function findBestMatchingURLsRelaxed(
  * exist verbatim in the content (it is sliced straight out of it), so it always
  * passes the downstream verbatim check.
  *
- * @param relaxed  When true, widens the window to 4 words and counts partial
- *                 (prefix) slug matches — used only as a fallback to reach the
- *                 minimum link count.
- * @returns { anchor, anchorScore } or null when no slug-tied phrase exists.
+ * @param relaxed   When true, widens the window to 4 words and counts partial
+ *                  (prefix) slug matches — used only as a fallback to reach the
+ *                  minimum link count.
+ * @param pageWords Naming keywords from the page's REAL fetched title +
+ *                  description. When provided, phrases that name the page's
+ *                  actual content outrank slug-only ties — the anchor should
+ *                  tell the reader exactly which page they will land on.
+ * @returns { anchor, anchorScore } or null when no topic-tied phrase exists.
  */
 function findBestAnchor(
   url: string,
   content: string,
   primaryKeyword: string,
-  relaxed = false
+  relaxed = false,
+  pageWords?: Set<string>
 ): { anchor: string; anchorScore: number } | null {
   let pathname = '';
   try {
@@ -400,7 +416,7 @@ function findBestAnchor(
     .filter((w) => w.length > 2 && /^[a-z]+$/.test(w) && !STOP_WORDS.has(w) && !CONTENT_STOP.has(w));
 
   const slugSet = new Set(slugWords);
-  if (slugSet.size === 0) return null;
+  if (slugSet.size === 0 && !(pageWords && pageWords.size > 0)) return null;
 
   const pkWords = new Set(
     primaryKeyword.toLowerCase().split(/\s+/).filter((w) => w.length > 2)
@@ -441,22 +457,26 @@ function findBestAnchor(
       if (PROPER_NOUN_TAILS.has(words[0])) continue;
 
       let slugHits = 0;
+      let pageHits = 0;
       let pkHits = 0;
       for (const w of words) {
         if (slugSet.has(w)) slugHits++;
         else if (relaxed && w.length > 4 && [...slugSet].some((s) => s.length > 4 && (w.startsWith(s) || s.startsWith(w)))) {
           slugHits++;
         }
+        if (pageWords?.has(w)) pageHits++;
         if (pkWords.has(w)) pkHits++;
       }
 
-      // The anchor MUST tie back to the URL topic — at least one slug word.
-      if (slugHits === 0) continue;
+      // The anchor MUST tie back to the page's topic — a word from its real
+      // title/description, or failing that a slug word.
+      if (slugHits === 0 && pageHits === 0) continue;
 
-      // Prefer the most slug coverage (topical tie), then primary-keyword
-      // presence, then the most CONCISE phrase — so we get "geothermal pools",
-      // not "geothermal pools steam" padded with an unrelated word.
-      const score = slugHits * 100 + pkHits * 10 - len * 3;
+      // Prefer phrases that NAME the page's real fetched content (title/
+      // description hits) over slug-only ties, then primary-keyword presence,
+      // then the most CONCISE phrase — so we get "geothermal pools", not
+      // "geothermal pools steam" padded with an unrelated word.
+      const score = pageHits * 150 + slugHits * 100 + pkHits * 10 - len * 3;
       if (!best || score > best.anchorScore) {
         best = { anchor: phrase.trim(), anchorScore: score };
       }
@@ -542,6 +562,73 @@ export function buildInternalLinks(
   return links;
 }
 
+// A candidate page whose REAL content has been fetched and confirmed relevant.
+export interface PageCandidate {
+  url: string;
+  pageTitle?: string;
+  pageDescription?: string;
+  pageScore?: number;
+}
+
+/**
+ * Find the best VERBATIM article phrase to anchor a link to a READ page —
+ * chosen against the page's real fetched title/description (slug only as a
+ * secondary signal) and held to the FULL quality bar: a clean 2–4 word noun
+ * phrase that genuinely names the destination. Returns null when the article
+ * simply contains no phrase that names this page — in that case the page must
+ * not be linked at all.
+ */
+export function findAnchorForPage(
+  content: string,
+  page: PageCandidate,
+  primaryKeyword: string
+): string | null {
+  const pageText = `${page.pageTitle || ''} ${page.pageDescription || ''}`;
+  const namingWords = pageNamingWords(pageText);
+
+  for (const relaxed of [false, true]) {
+    const best = findBestAnchor(page.url, content, primaryKeyword, relaxed, namingWords);
+    if (!best) continue;
+    if (!isQualityAnchor(best.anchor)) continue;
+    if (!anchorMatchesPageText(best.anchor, pageText)) continue;
+    return best.anchor;
+  }
+  return null;
+}
+
+/**
+ * Deterministically build internal links from READ-AND-CONFIRMED pages. Unlike
+ * buildInternalLinks (slug-driven), candidates are ranked by how relevant the
+ * FETCHED page actually is (pageScore) and every anchor is chosen to NAME the
+ * page's real title/description via findAnchorForPage — so each link satisfies
+ * the same bar as a validated AI link. Pages with no naming phrase in the
+ * article are skipped, never padded in.
+ */
+export function buildInternalLinksFromPages(
+  content: string,
+  pages: PageCandidate[],
+  primaryKeyword: string,
+  maxLinks = 7,
+  excludeAnchors?: Set<string>
+): InternalLink[] {
+  const ranked = [...pages].sort((a, b) => (b.pageScore ?? 0) - (a.pageScore ?? 0));
+
+  const links: InternalLink[] = [];
+  const usedAnchors = new Set<string>(
+    [...(excludeAnchors ?? [])].map((a) => a.toLowerCase())
+  );
+
+  for (const page of ranked) {
+    if (links.length >= maxLinks) break;
+    const anchor = findAnchorForPage(content, page, primaryKeyword);
+    if (!anchor || usedAnchors.has(anchor.toLowerCase())) continue;
+    usedAnchors.add(anchor.toLowerCase());
+    links.push({ anchorText: anchor, url: page.url, isLive: true });
+  }
+
+  return links;
+}
+
 export interface PageRelevance {
   score: number;          // overall topical-overlap score
   strongMatches: number;  // article topics found in the page's title/description/headings
@@ -606,8 +693,18 @@ export function scorePageRelevance(
   if (pkInPage) {
     score += 12;
   } else {
+    // Only words that NAME the keyword's topic count — "best" from a keyword
+    // like "best souvenirs" matches half the magazine and proves nothing.
     for (const w of pkLower.split(/\s+/)) {
-      if (w.length > 3 && pageHeadText.includes(w)) score += 3;
+      if (
+        w.length > 3 &&
+        !CONTENT_STOP.has(w) &&
+        !GENERIC_TOPIC_WORDS.has(w) &&
+        !GENERIC_DESCRIPTORS.has(w) &&
+        pageHeadText.includes(w)
+      ) {
+        score += 3;
+      }
     }
   }
 
@@ -632,33 +729,50 @@ export function anchorIsRelevantToURL(anchor: string, url: string): boolean {
   return words.some((word) => urlPath.includes(word));
 }
 
+// Words that legitimately NAME a topic when judging the anchor↔page pairing:
+// 3-letter topic nouns count (spa, gym, art, ski), but stop-words, generic SEO
+// filler ("best", "guide", "ideas") and site-wide descriptors ("luxury") never
+// do — those appear on every page and prove nothing.
+function isNamingWord(w: string): boolean {
+  return (
+    w.length >= 3 &&
+    !STOP_WORDS.has(w) &&
+    !CONTENT_STOP.has(w) &&
+    !GENERIC_TOPIC_WORDS.has(w) &&
+    !GENERIC_DESCRIPTORS.has(w)
+  );
+}
+
+// Substantive keywords from a page's real fetched title + description — the
+// words an anchor can legitimately use to NAME that page.
+function pageNamingWords(pageText: string): Set<string> {
+  return new Set(pageText.toLowerCase().split(/\W+/).filter(isNamingWord));
+}
+
 /**
  * STRONG anchor↔destination check for SEO internal links. True only when the
  * anchor genuinely NAMES what the destination page is about: at least one
- * substantial anchor word (≥4 letters, not a stop-word) matches the page's REAL
- * fetched title + meta description as a whole word — or is contained in one of
- * those words when the shared part is ≥5 letters (so "Yellow" matches a page
- * titled "Yellowdays", "hotel" matches "hotels", but "days" never matches
- * "Yellowdays" and short/function words never qualify).
+ * NAMING anchor word matches the page's REAL fetched title + meta description
+ * as a whole word — or is contained in one of those words when the shared part
+ * is ≥5 letters (so "Yellow" matches a page titled "Yellowdays", "hotel"
+ * matches "hotels", but "days" never matches "Yellowdays").
+ *
+ * Naming words exclude stop-words, generic SEO filler ("best", "guide") and
+ * site-wide descriptors ("luxury", "lifestyle") — a magazine-wide word shared
+ * with the title is NOT a match. Short topic nouns (spa, gym, art) DO count,
+ * but only as exact whole-word matches, never by containment.
  *
  * This is what makes a link "1000% relevant": relevance is judged by the page's
- * own content, never the URL slug, and a mere shared short word is not enough.
+ * own content, never the URL slug, and a mere shared filler word is not enough.
  */
 export function anchorMatchesPageText(anchor: string, pageText: string): boolean {
-  const pageWords = [
-    ...new Set(
-      pageText
-        .toLowerCase()
-        .split(/\W+/)
-        .filter((w) => w.length > 3 && !CONTENT_STOP.has(w))
-    ),
-  ];
+  const pageWords = [...pageNamingWords(pageText)];
   if (pageWords.length === 0) return false;
 
   const anchorWords = anchor
     .toLowerCase()
     .split(/[\s'‘’\-]+/)
-    .filter((w) => w.length > 3 && !CONTENT_STOP.has(w));
+    .filter(isNamingWord);
   if (anchorWords.length === 0) return false;
 
   return anchorWords.some((a) =>

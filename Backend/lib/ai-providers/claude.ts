@@ -11,7 +11,9 @@ export async function callClaude(
 
   const response = await client.messages.create({
     model: modelId || 'claude-sonnet-4-6',
-    max_tokens: 2048,
+    // Anthropic requires max_tokens, so "unlimited" isn't possible — this is a
+    // generous ceiling the output format never reaches, so nothing truncates.
+    max_tokens: 8192,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   });

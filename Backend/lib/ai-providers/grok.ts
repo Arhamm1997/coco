@@ -13,9 +13,10 @@ export async function callGrok(
     baseURL: 'https://api.x.ai/v1',
   });
 
+  // No max_tokens — the model may use its full output budget, so the
+  // response is never truncated mid-field.
   const response = await client.chat.completions.create({
     model: modelId || 'grok-2',
-    max_tokens: 2048,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OptimizeRequest, OptimizeResponse } from '@/types';
 import { callAIProvider } from '@/lib/ai-providers';
-import { findBestMatchingURLsRelaxed, buildInternalLinks, scorePageRelevance, isQualityAnchor, anchorMatchesPageText, isLikelySelfLink, isSameArticlePage } from '@/lib/url-matcher';
+import { findBestMatchingURLsRelaxed, buildInternalLinksFromPages, findAnchorForPage, scorePageRelevance, isQualityAnchor, anchorMatchesPageText, isLikelySelfLink, isSameArticlePage } from '@/lib/url-matcher';
 import { fetchPageSummaries } from '@/lib/page-fetcher';
+import { finalizeMetaTitle, finalizeMetaDescription } from '@/lib/meta';
 import { buildPrompt, buildSystemPrompt } from '@/lib/prompt-builder';
 import { parseAIResponse } from '@/lib/response-parser';
 import { validateOptimizeRequest } from '@/lib/validators';
@@ -39,8 +40,23 @@ function fallbackPlacement(content: string): string {
 
 function ensureSensiblePlacement(aiPlacement: string, content: string): string {
   const quoted = aiPlacement.match(/["“”]([^"“”]{10,200})["“”]/);
-  if (quoted && normalizeForSearch(content).includes(normalizeForSearch(quoted[1]))) {
-    return aiPlacement;
+  if (quoted) {
+    const q = normalizeForSearch(quoted[1]);
+    // The quote must be the OPENING of a real paragraph — a mid-paragraph
+    // sentence would tell the editor to paste the section into the middle of
+    // a paragraph. And it must not be the article's FIRST block: inserting
+    // above the intro is never editorially sensible.
+    const paras = content
+      .split(/\r?\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const idx = paras.findIndex((p) => {
+      if (normalizeForSearch(p).startsWith(q)) return true;
+      // Tolerate markdown/list markers the AI rightly leaves out of its quote
+      const unmarked = p.replace(/^[#>*•\-\s]+|^\d+[.)]\s+/g, '');
+      return normalizeForSearch(unmarked).startsWith(q);
+    });
+    if (idx > 0) return aiPlacement;
   }
   return fallbackPlacement(content);
 }
@@ -85,7 +101,20 @@ export async function POST(req: NextRequest) {
     //   a) narrow the sheet to the top slug-relevant candidates (cheap filter),
     //   b) fetch each candidate and read its REAL title/description/headings/body,
     //   c) keep only pages whose actual content overlaps this article.
-    const slugCandidates = findBestMatchingURLsRelaxed(content, urls, primaryKeyword, 40);
+    // Small sheets are read in FULL — slug wording must never hide a relevant
+    // page, so the slug pre-filter only kicks in when the sheet is too big to
+    // fetch whole.
+    const uniqueUrls = [...new Set(urls)];
+    const READ_POOL = 60;
+    const slugCandidates = findBestMatchingURLsRelaxed(content, uniqueUrls, primaryKeyword, READ_POOL);
+    if (uniqueUrls.length <= READ_POOL && slugCandidates.length < uniqueUrls.length) {
+      const seen = new Set(slugCandidates.map((c) => c.url));
+      for (const url of uniqueUrls) {
+        if (!seen.has(url)) {
+          slugCandidates.push({ url, slug: url, keywords: [], anchorText: null, relevanceScore: 0 });
+        }
+      }
+    }
 
     const summaries = await fetchPageSummaries(slugCandidates.map((c) => c.url), 10);
 
@@ -129,6 +158,14 @@ export async function POST(req: NextRequest) {
     const topCandidates = confirmed.slice(0, 25);
     const liveUrlCount = topCandidates.length;
 
+    // Replace the slug-derived suggested anchor with a PAGE-AWARE one: the best
+    // verbatim article phrase that names each page's real fetched title/
+    // description, held to the same quality bar as the validators below — so
+    // the anchor the AI is steered towards never bounces off validation.
+    for (const c of topCandidates) {
+      c.anchorText = findAnchorForPage(content, c, primaryKeyword);
+    }
+
     // Surfaced in Render logs so we can tell *why* a run produced few links:
     // a fetch/network problem (low readCount) vs. a sheet that simply lacks
     // pages on this topic (high readCount, low confirmed).
@@ -161,6 +198,18 @@ export async function POST(req: NextRequest) {
     const placementRecommendation = ensureSensiblePlacement(
       parsed.placementRecommendation,
       content
+    );
+
+    // Meta fields are finalised deterministically: brand suffixes stripped,
+    // word-boundary length trimming (never a mid-word chop), and the meta
+    // description MUST contain the exact primary keyword and describe THIS
+    // article — repaired from the keyword + the article's own opening if the
+    // AI's version fails either bar.
+    const metaTitle = finalizeMetaTitle(parsed.metaTitle);
+    const metaDescription = finalizeMetaDescription(
+      parsed.metaDescription,
+      content,
+      primaryKeyword
     );
 
     // ── 6. Validate + assemble internal links (3–7, all page-verified) ─────
@@ -235,25 +284,18 @@ export async function POST(req: NextRequest) {
       return true;
     });
 
-    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool
-    // (slug scoring here just picks the best anchor among pages we already
-    // verified), with anchors sliced verbatim from the article. We aim for up
-    // to 7 links, but if fewer confirmed pages exist we return fewer — never
-    // pad with unverified pages.
+    // Deterministic top-up — drawn ONLY from the confirmed-relevant pool,
+    // ranked by how relevant each FETCHED page actually is (pageScore), with
+    // anchors sliced verbatim from the article and chosen to NAME the page's
+    // real title/description (findAnchorForPage applies the full quality bar
+    // internally). We aim for up to 7 links, but if fewer confirmed pages have
+    // a genuine naming phrase in the article we return fewer — never pad.
     let finalLinks = [...validatedAILinks];
     const targetCount = 7;
     if (finalLinks.length < targetCount) {
-      const remaining = topCandidates
-        .map((u) => u.url)
-        .filter((u) => !usedUrls.has(u));
+      const remaining = topCandidates.filter((u) => !usedUrls.has(u.url));
       const need = targetCount - finalLinks.length;
-      const extras = buildInternalLinks(content, remaining, primaryKeyword, need, need)
-        .filter((l) => !usedAnchors.has(l.anchorText.toLowerCase()))
-        // Hold the deterministic top-up to the SAME anchor bar as AI links: a
-        // clean 2–4 word phrase (no fragments / proper-noun cuts) that also
-        // names the destination page's real content.
-        .filter((l) => isQualityAnchor(l.anchorText))
-        .filter((l) => anchorMatchesPageText(l.anchorText, destTextByUrl.get(l.url) || ''));
+      const extras = buildInternalLinksFromPages(content, remaining, primaryKeyword, need, usedAnchors);
       finalLinks = [...finalLinks, ...extras];
     }
 
@@ -274,8 +316,8 @@ export async function POST(req: NextRequest) {
         h3:                      parsed.h3,
         paragraph1:              parsed.paragraph1,
         paragraph2:              parsed.paragraph2,
-        metaTitle:               parsed.metaTitle,
-        metaDescription:         parsed.metaDescription,
+        metaTitle,
+        metaDescription,
         internalLinks:           validatedLinks,
         placementRecommendation,
         tokensUsed:              aiResponse.tokensUsed,
@@ -293,8 +335,8 @@ export async function POST(req: NextRequest) {
         h3:                      parsed.h3,
         paragraph1:              parsed.paragraph1,
         paragraph2:              parsed.paragraph2,
-        metaTitle:               parsed.metaTitle,
-        metaDescription:         parsed.metaDescription,
+        metaTitle,
+        metaDescription,
         internalLinks:           validatedLinks,
         placementRecommendation,
         provider,
