@@ -1,0 +1,23 @@
+*[33m-[m[33m.[m   [33md7cb0fa[m[33m ([m[1;35mrefs/stash[m[33m)[m On main: work in progress
+[31m|[m[32m\[m [33m\[m  
+[31m|[m [32m|[m * [33m0fee281[m untracked files on main: 2a1d937 Fix: add missing ProviderUsageStat, ModelUsageStat, UsageStatsResponse types
+[31m|[m * [33m3254ace[m index on main: 2a1d937 Fix: add missing ProviderUsageStat, ModelUsageStat, UsageStatsResponse types
+[31m|[m[31m/[m  
+* [33m2a1d937[m Fix: add missing ProviderUsageStat, ModelUsageStat, UsageStatsResponse types
+*   [33m270db74[m Merge remote backend initial commit — keep local package/tsconfig fixes
+[34m|[m[35m\[m  
+[34m|[m * [33m34d0aa3[m Initial commit: House of Coco SEO Content Optimizer App
+* [33mb6f17fe[m Update backend: fix gitignore, package deps, tsconfig, add usage API route
+* [33m10e2934[m Fix: restore gitignore, remove .next from repo, fix moduleResolution
+* [33m526f231[m Change moduleResolution from 'node' to 'bundler'
+* [33meb8e02a[m Add lib files and update all routes
+* [33m2c24b56[m Change moduleResolution from 'bundler' to 'node'
+* [33m3186c94[m Fix: use moduleResolution bundler for Next.js 14 path alias resolution on Render
+* [33md1d4c05[m Fix: moduleResolution node + strict false for Render build
+* [33m5752de0[m Fix: add baseUrl to tsconfig.json for @ path alias resolution
+* [33m85065e9[m Initial commit — SEO Content Optimizer Backend
+* [33mf81b089[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix: sanitize AI response parser (strip quotes, clean meta fields and link URLs)
+* [33m1d7277b[m Internal links: reject 2-letter contraction edges; add deploy-verify marker
+* [33mefdaa41[m Internal links: anchor must contain a real keyword noun, not filler
+* [33m27f81a4[m Internal links: robust self-link, proper-noun anchors, kill fragment anchors
+* [33mf07cb2c[m Internal links: add self-link guard + reject 'to/at/by' edge fragments
